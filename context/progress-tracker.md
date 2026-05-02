@@ -5,7 +5,7 @@ change.
 
 ## Current Phase
 
-- Phase 1: Design System & UI Primitives — Complete
+- Phase 2: Editor Shell
 
 ## Current Goal
 
@@ -13,6 +13,7 @@ change.
 
 ## Completed
 
+- Phase 1: Design System & UI Primitives — Complete
 - 01-design-system:
   - Installed and configured shadcn/ui (Radix + Nova preset, Tailwind v4)
   - Added 7 UI components: Button, Card, Dialog, Input, Tabs, TextArea, ScrollArea
@@ -21,6 +22,11 @@ change.
   - Customized `globals.css` with project dark theme tokens from ui-context.md
   - Mapped all project design tokens to Tailwind utilities (bg-base, text-copy-primary, text-brand, etc.)
   - Forced dark mode on `<html>` element (dark-only, no light mode)
+  - `npm run build` passes with zero errors
+- 02-editor:
+  - Created `components/editor/editor-navbar.tsx` (fixed-height, sidebar toggle button)
+  - Created `components/editor/project-sidebar.tsx` (floats above canvas, slides in from left, Tabs)
+  - Verified Dialog Pattern using global color tokens
   - `npm run build` passes with zero errors
 
 ## In Progress
