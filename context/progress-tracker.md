@@ -5,7 +5,7 @@ change.
 
 ## Current Phase
 
-- Phase 2: Editor Shell
+- Phase 3: Authentication
 
 ## Current Goal
 
@@ -14,6 +14,8 @@ change.
 ## Completed
 
 - Phase 1: Design System & UI Primitives — Complete
+- Phase 2: Editor Shell — Complete
+- Phase 3: Authentication — Complete
 - 01-design-system:
   - Installed and configured shadcn/ui (Radix + Nova preset, Tailwind v4)
   - Added 7 UI components: Button, Card, Dialog, Input, Tabs, TextArea, ScrollArea
@@ -27,6 +29,14 @@ change.
   - Created `components/editor/editor-navbar.tsx` (fixed-height, sidebar toggle button)
   - Created `components/editor/project-sidebar.tsx` (floats above canvas, slides in from left, Tabs)
   - Verified Dialog Pattern using global color tokens
+  - `npm run build` passes with zero errors
+- 03-auth:
+  - Installed @clerk/nextjs and @clerk/ui
+  - Wrapped root layout with ClerkProvider using dark theme and project CSS variables
+  - Created `proxy.ts` to protect all routes except public auth paths
+  - Updated root `/` route to redirect to `/editor` or `/sign-in`
+  - Created custom sign-in and sign-up pages using Clerk components in `app/(auth)` with two-panel layout
+  - Added UserButton to `components/editor/editor-navbar.tsx`
   - `npm run build` passes with zero errors
 
 ## In Progress
