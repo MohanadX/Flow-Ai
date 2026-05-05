@@ -38,6 +38,20 @@ change.
   - Created custom sign-in and sign-up pages using Clerk components in `app/(auth)` with two-panel layout
   - Added UserButton to `components/editor/editor-navbar.tsx`
   - `npm run build` passes with zero errors
+- 04-project-dialogs:
+  - Implemented all project-related dialogs (Create, Rename, Delete) in a single component `ProjectDialogs` at `components/editor/project-dialogs.tsx`
+  - Refined dialog specs with validation (min/max length), error handling, and accessibility requirements
+  - Added live slug preview and validation to `useProjectDialogs` hook using updated `slugify` utility
+  - Improved keyboard interactions (Enter to submit) in all dialogs
+  - Fixed accessibility issues: `inert` attribute on sidebar, ARIA labels, and focus management
+  - Cleaned up Sidebar UI: removed misleading `cursor-pointer`, added hover-triggered actions
+  - Lifted state management to the `EditorPage` level using the `useProjectDialogs` hook
+  - Passed dialog state and handlers through `EditorChrome` to the sidebar and dialog components via props
+  - Unified project data types across the sidebar and dialogs using the `owned` property
+  - Updated Editor Home screen (`/editor`) with welcome text and New Project button
+  - Updated Project Sidebar with project actions (rename, delete) and hook-managed project state
+  - Added mobile responsiveness (backdrop, close on outside click) to sidebar
+  - `npm run build` passes with zero errors
 
 ## In Progress
 
@@ -45,7 +59,7 @@ change.
 
 ## Next Up
 
-- Next feature unit (per feature-specs/)
+- Canvas implementation (Real-time collaborative canvas with React Flow and Liveblocks)
 
 ## Open Questions
 
@@ -57,6 +71,9 @@ change.
 - Components live in `components/ui/` — generated files are not modified after installation
 - Both `:root` and `.dark` CSS blocks contain identical dark palette values since the app is dark-only
 - Project design tokens (bg-base, text-copy-primary, text-brand, etc.) are defined alongside shadcn semantic tokens in globals.css
+- Using lifted state at the `EditorPage` level for project dialog management.
+- All project dialogs (Create, Rename, Delete) are consolidated into a single component (`components/editor/project-dialogs.tsx`) for easier maintenance and consistency.
+- This approach provides a clear, dependency-free implementation using standard React state lifting and prop passing.
 
 ## Session Notes
 
