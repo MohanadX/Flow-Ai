@@ -3,12 +3,7 @@
 import { useState } from "react";
 import { slugify } from "@/lib/utils";
 
-export interface Project {
-	id: string;
-	name: string;
-	slug: string;
-	owned: boolean;
-}
+import { Project } from "@/types/project";
 
 export type DialogType = "create" | "rename" | "delete" | null;
 
@@ -27,13 +22,14 @@ export interface DialogProps {
 
 
 const MOCK_PROJECTS: Project[] = [
-	{ id: "1", name: "Ghost AI Core", slug: "ghost-ai-core", owned: true },
-	{ id: "2", name: "Design System", slug: "design-system", owned: true },
+	{ id: "1", name: "Ghost AI Core", slug: "ghost-ai-core", isOwner: true, ownerId: "user_1" },
+	{ id: "2", name: "Design System", slug: "design-system", isOwner: true, ownerId: "user_1" },
 	{
 		id: "3",
 		name: "Partner Integration",
 		slug: "partner-integration",
-		owned: false,
+		isOwner: false,
+		ownerId: "user_2",
 	},
 ];
 
@@ -83,16 +79,31 @@ export function useProjectDialogs() {
 	};
 
 	const submit = async () => {
+		if (loading) return;
+
+		const trimmedName = name.trim();
+
+		// Validation
+		if (dialogType === "create" || dialogType === "rename") {
+			if (!trimmedName) {
+				setError("Name is required");
+				return;
+			}
+			if (trimmedName.length > 50) {
+				setError("Name must be 50 characters or less");
+				return;
+			}
+			if (!/^[a-zA-Z0-9\s-]+$/.test(trimmedName)) {
+				setError("Only letters, numbers, spaces, and hyphens allowed");
+				return;
+			}
+		}
+
 		setLoading(true);
 		await new Promise((r) => setTimeout(r, 400));
 
-		if (dialogType === "create" && name.trim()) {
-			if (name.trim().length > 50) {
-				setError("Name must be 50 characters or less");
-				setLoading(false);
-				return;
-			}
-			const finalSlug = slug || slugify(name.trim());
+		if (dialogType === "create") {
+			const finalSlug = slug || slugify(trimmedName);
 			if (!finalSlug) {
 				setError("Invalid name for URL");
 				setLoading(false);
@@ -100,18 +111,14 @@ export function useProjectDialogs() {
 			}
 			const newProject: Project = {
 				id: String(Date.now()),
-				name: name.trim(),
+				name: trimmedName,
 				slug: finalSlug,
-				owned: true,
+				isOwner: true,
+				ownerId: "current_user",
 			};
 			setProjects((prev) => [...prev, newProject]);
-		} else if (dialogType === "rename" && activeProject && name.trim()) {
-			if (name.trim().length > 50) {
-				setError("Name must be 50 characters or less");
-				setLoading(false);
-				return;
-			}
-			const finalSlug = slug || slugify(name.trim());
+		} else if (dialogType === "rename" && activeProject) {
+			const finalSlug = slug || slugify(trimmedName);
 			if (!finalSlug) {
 				setError("Invalid name for URL");
 				setLoading(false);
@@ -120,7 +127,7 @@ export function useProjectDialogs() {
 			setProjects((prev) =>
 				prev.map((p) =>
 					p.id === activeProject.id
-						? { ...p, name: name.trim(), slug: finalSlug }
+						? { ...p, name: trimmedName, slug: finalSlug }
 						: p,
 				),
 			);

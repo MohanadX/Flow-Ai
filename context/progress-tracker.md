@@ -44,10 +44,11 @@ change.
   - Added live slug preview and validation to `useProjectDialogs` hook using updated `slugify` utility
   - Improved keyboard interactions (Enter to submit) in all dialogs
   - Fixed accessibility issues: `inert` attribute on sidebar, ARIA labels, and focus management
-  - Cleaned up Sidebar UI: removed misleading `cursor-pointer`, added hover-triggered actions
   - Lifted state management to the `EditorPage` level using the `useProjectDialogs` hook
   - Passed dialog state and handlers through `EditorChrome` to the sidebar and dialog components via props
-  - Unified project data types across the sidebar and dialogs using the `owned` property
+  - Unified project data types across the sidebar and dialogs using canonical `isOwner/ownerId` properties from `types/project.ts`
+  - Added loading guards to submission handlers and keydown events to prevent duplicate project creation
+  - Refactored `useProjectDialogs` to improve validation flow and guard against concurrent calls
   - Updated Editor Home screen (`/editor`) with welcome text and New Project button
   - Updated Project Sidebar with project actions (rename, delete) and hook-managed project state
   - Added mobile responsiveness (backdrop, close on outside click) to sidebar

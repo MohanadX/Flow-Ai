@@ -4,7 +4,7 @@ import { Pencil, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { Project } from "@/hooks/use-project-dialogs";
+import { Project } from "@/types/project";
 
 interface ProjectSidebarProps {
 	isOpen: boolean;
@@ -23,8 +23,8 @@ export function ProjectSidebar({
 	onRename,
 	onDelete,
 }: ProjectSidebarProps) {
-	const myProjects = projects.filter((p) => p.owned);
-	const sharedProjects = projects.filter((p) => !p.owned);
+	const myProjects = projects.filter((p) => p.isOwner);
+	const sharedProjects = projects.filter((p) => !p.isOwner);
 
 	return (
 		<>
@@ -133,7 +133,7 @@ function ProjectItem({
 		<div className="group cursor-pointer flex items-center justify-between rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground">
 			<span className="truncate">{project.name}</span>
 
-			{project.owned && (
+			{project.isOwner && (
 				<div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
 					<Button
 						variant="ghost"

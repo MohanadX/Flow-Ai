@@ -46,7 +46,7 @@ export function ProjectDialogs({
 							value={name}
 							onChange={(e) => handleNameChange(e.target.value)}
 							onKeyDown={(e) => {
-								if (e.key === "Enter" && name.trim()) submit();
+								if (e.key === "Enter" && name.trim() && !loading) submit();
 							}}
 							autoFocus
 							className="text-white"
@@ -86,7 +86,7 @@ export function ProjectDialogs({
 						value={name}
 						onChange={(e) => handleNameChange(e.target.value)}
 						onKeyDown={(e) => {
-							if (e.key === "Enter" && name.trim()) submit();
+							if (e.key === "Enter" && name.trim() && !loading) submit();
 						}}
 						className="text-white"
 						autoFocus
