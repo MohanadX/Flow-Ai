@@ -21,7 +21,6 @@ function createPrismaClient() {
 			accelerateUrl: databaseUrl,
 		});
 	}
-	}
 
 	const adapter = new PrismaPg({
 		connectionString: databaseUrl,
