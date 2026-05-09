@@ -5,7 +5,7 @@ change.
 
 ## Current Phase
 
-- Phase 3: Authentication
+- Phase 4: Prisma data layer
 
 ## Current Goal
 
@@ -53,6 +53,16 @@ change.
   - Updated Project Sidebar with project actions (rename, delete) and hook-managed project state
   - Added mobile responsiveness (backdrop, close on outside click) to sidebar
   - `npm run build` passes with zero errors
+- 05-prisma:
+  - Added `ProjectStatus` enum with `DRAFT` and `ARCHIVED` statuses
+  - Added `Project` model with Clerk owner ID, name, optional description, status, canvas blob path reference, timestamps, and owner/date indexes
+  - Added `ProjectCollaborator` model with cascade project relation, collaborator email, creation timestamp, unique project/email constraint, and email/project-date indexes
+  - Created cached Prisma singleton at `lib/prisma.ts`
+  - Prisma client branches by `DATABASE_URL`: `prisma+postgres://` uses `accelerateUrl`, direct URLs use `@prisma/adapter-pg`
+  - Updated Prisma config to load Next.js env files so `.env.local` works for CLI commands
+  - Created and applied migration `20260509082106_init_projects`
+  - Ran `npx prisma generate`
+  - `npm run build` passes with zero errors
 
 ## In Progress
 
@@ -75,9 +85,11 @@ change.
 - Using lifted state at the `EditorPage` level for project dialog management.
 - All project dialogs (Create, Rename, Delete) are consolidated into a single component (`components/editor/project-dialogs.tsx`) for easier maintenance and consistency.
 - This approach provides a clear, dependency-free implementation using standard React state lifting and prop passing.
+- Prisma CLI configuration uses Next.js env loading so development secrets in `.env.local` are available to migrations and generation.
 
 ## Session Notes
 
 - shadcn init created `components.json` with style "radix-nova", RSC enabled, lucide icon library
 - The `dark` class is applied to `<html>` in `app/layout.tsx` to force dark mode
 - All 7 required components verified present in `components/ui/`
+- Prisma migration `20260509082106_init_projects` was applied successfully to the configured PostgreSQL database.
