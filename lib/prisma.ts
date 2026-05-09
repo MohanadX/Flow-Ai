@@ -1,4 +1,5 @@
-import "server-only";
+import "dotenv/config";
+import "server-only"; // protection layer to not be imported in client file (doesn't create API endpoints)
 
 import { PrismaPg } from "@prisma/adapter-pg";
 

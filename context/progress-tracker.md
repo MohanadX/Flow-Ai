@@ -86,6 +86,7 @@ change.
 - All project dialogs (Create, Rename, Delete) are consolidated into a single component (`components/editor/project-dialogs.tsx`) for easier maintenance and consistency.
 - This approach provides a clear, dependency-free implementation using standard React state lifting and prop passing.
 - Prisma CLI configuration uses Next.js env loading so development secrets in `.env.local` are available to migrations and generation.
+- Prisma server client module explicitly loads dotenv before reading `DATABASE_URL` for Prisma v7 runtime compatibility.
 
 ## Session Notes
 
