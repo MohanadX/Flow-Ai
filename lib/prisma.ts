@@ -16,10 +16,11 @@ function createPrismaClient() {
 		throw new Error("DATABASE_URL is required to initialize Prisma.");
 	}
 
-	if (databaseUrl.startsWith("prisma+postgres://")) {
+	if (databaseUrl.startsWith("prisma://") || databaseUrl.startsWith("prisma+postgres://")) {
 		return new PrismaClient({
 			accelerateUrl: databaseUrl,
 		});
+	}
 	}
 
 	const adapter = new PrismaPg({
