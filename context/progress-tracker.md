@@ -5,7 +5,7 @@ change.
 
 ## Current Phase
 
-- Phase 6: Editor chrome project API wiring
+- Phase 7: Wire editor chrome to real project APIs (complete)
 
 ## Current Goal
 
