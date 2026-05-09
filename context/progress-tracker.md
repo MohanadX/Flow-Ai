@@ -85,6 +85,8 @@ change.
 - Dialog polish:
   - Capped project name dialog inputs at the existing 50-character validation limit
   - Wrapped long room ID previews and project names inside project dialogs so long values do not overflow the modal
+- Project API hardening:
+  - Removed the create-project ID pre-check race and mapped Prisma `P2002` ID conflicts to the existing `PROJECT_ID_CONFLICT` 409 response
 
 ## In Progress
 

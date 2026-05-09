@@ -1,6 +1,9 @@
 import "server-only";
 
-import type { Project as PrismaProject } from "@/app/generated/prisma/client";
+import {
+	Prisma,
+	type Project as PrismaProject,
+} from "@/app/generated/prisma/client";
 import { ApiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/utils";
@@ -94,30 +97,27 @@ export async function createProject(
 	name: string,
 	projectId?: string,
 ): Promise<ProjectDto> {
-	if (projectId) {
-		const existingProject = await prisma.project.findUnique({
-			where: { id: projectId },
-			select: { id: true },
+	try {
+		const project = await prisma.project.create({
+			data: {
+				...(projectId ? { id: projectId } : {}),
+				ownerId,
+				name,
+			},
 		});
 
-		if (existingProject) {
+		return serializeProject(project, ownerId);
+	} catch (error) {
+		if (isProjectIdConflict(error)) {
 			throw new ApiError(
 				409,
 				"PROJECT_ID_CONFLICT",
 				"Project room ID already exists.",
 			);
 		}
+
+		throw error;
 	}
-
-	const project = await prisma.project.create({
-		data: {
-			...(projectId ? { id: projectId } : {}),
-			ownerId,
-			name,
-		},
-	});
-
-	return serializeProject(project, ownerId);
 }
 
 export async function renameProject(
@@ -208,6 +208,24 @@ function validateProjectId(projectId: string): string {
 	}
 
 	return projectId;
+}
+
+function isProjectIdConflict(error: unknown): boolean {
+	if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+		return false;
+	}
+
+	if (error.code !== "P2002") {
+		return false;
+	}
+
+	const target = error.meta?.target;
+
+	if (Array.isArray(target)) {
+		return target.includes("id");
+	}
+
+	return target === "id";
 }
 
 function serializeProject(
