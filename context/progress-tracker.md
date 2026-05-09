@@ -5,7 +5,7 @@ change.
 
 ## Current Phase
 
-- Phase 4: Prisma data layer
+- Phase 7: Wire editor chrome to real project APIs (complete)
 
 ## Current Goal
 
@@ -63,6 +63,30 @@ change.
   - Created and applied migration `20260509082106_init_projects`
   - Ran `npx prisma generate`
   - `npm run build` passes with zero errors
+- 06-project-apis:
+  - Added `GET /api/projects` to list projects owned by the authenticated Clerk user
+  - Added `POST /api/projects` to create projects with the authenticated Clerk user as `ownerId`
+  - Defaults missing or blank create names to `Untitled Project`
+  - Added `PATCH /api/projects/[projectId]` for owner-only project rename
+  - Added `DELETE /api/projects/[projectId]` for owner-only project deletion
+  - Added shared API helpers for `401`, `403`, `404`, validation errors, and consistent JSON error bodies
+  - Added project service helpers for name validation, project serialization, and Prisma access checks
+  - `npm run build` passes with zero errors
+- 07-wire-editor-chrome:
+  - Converted `/editor` back to a server component that fetches project lists before render
+  - Added owned/shared project grouping via the project service using owner ID and collaborator email matches
+  - Replaced mock project dialog state with `useProjectActions` for create, rename, delete, refresh, and navigation behavior
+  - Added URL-safe client-generated project room IDs and allowed `POST /api/projects` to persist them as project IDs
+  - Wired the sidebar tabs to real owned and shared project lists
+  - Added project navigation from sidebar rows to `/editor/[projectId]`
+  - Added a minimal `/editor/[projectId]` workspace route so new projects navigate to an active workspace
+  - Delete redirects to `/editor` when deleting the active workspace and refreshes otherwise
+  - `npm run build` passes with zero errors
+- Dialog polish:
+  - Capped project name dialog inputs at the existing 50-character validation limit
+  - Wrapped long room ID previews and project names inside project dialogs so long values do not overflow the modal
+- Project API hardening:
+  - Removed the create-project ID pre-check race and mapped Prisma `P2002` ID conflicts to the existing `PROJECT_ID_CONFLICT` 409 response
 
 ## In Progress
 
@@ -87,6 +111,8 @@ change.
 - This approach provides a clear, dependency-free implementation using standard React state lifting and prop passing.
 - Prisma CLI configuration uses Next.js env loading so development secrets in `.env.local` are available to migrations and generation.
 - Prisma server client module explicitly loads dotenv before reading `DATABASE_URL` for Prisma v7 runtime compatibility.
+- Project API routes return JSON envelopes (`{ projects }`, `{ project }`, or `{ error }`) and keep Prisma query/mutation logic in `lib/project-service.ts`.
+- New project creation uses a URL-safe slug plus short random suffix as the project ID so the project ID and Liveblocks room ID remain the same.
 
 ## Session Notes
 
@@ -94,3 +120,5 @@ change.
 - The `dark` class is applied to `<html>` in `app/layout.tsx` to force dark mode
 - All 7 required components verified present in `components/ui/`
 - Prisma migration `20260509082106_init_projects` was applied successfully to the configured PostgreSQL database.
+- Next.js 16 route handlers require awaiting dynamic `params`, so `/api/projects/[projectId]` uses promise-based route context parameters.
+- The required `context/architecture-context.md` file is currently named `context/architecture.md`; that file was used for architecture context in this feature.

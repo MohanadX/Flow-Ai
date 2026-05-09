@@ -1,7 +1,18 @@
-export type Project = {
-  id: string;
-  name: string;
-  slug: string;
-  ownerId: string;
-  isOwner: boolean;
-};
+export interface Project {
+	id: string;
+	roomId: string;
+	name: string;
+	slug: string;
+	ownerId: string;
+	isOwner: boolean;
+	description: string | null;
+	status: string;
+	canvasJsonPath: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface ProjectLists {
+	ownedProjects: Project[];
+	sharedProjects: Project[];
+}

@@ -10,15 +10,17 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { useProjectDialogs } from "@/hooks/use-project-dialogs";
+import type { UseProjectActionsReturn } from "@/hooks/use-project-actions";
 
-type ProjectDialogsProps = ReturnType<typeof useProjectDialogs>;
+type ProjectDialogsProps = UseProjectActionsReturn;
+
+const PROJECT_NAME_MAX_LENGTH = 50;
 
 export function ProjectDialogs({
 	dialogType,
 	activeProject,
 	name,
-	slug,
+	roomId,
 	loading,
 	error,
 	close,
@@ -44,15 +46,16 @@ export function ProjectDialogs({
 						<Input
 							placeholder="Project name"
 							value={name}
+							maxLength={PROJECT_NAME_MAX_LENGTH}
 							onChange={(e) => handleNameChange(e.target.value)}
 							onKeyDown={(e) => {
 								if (e.key === "Enter" && name.trim() && !loading) submit();
 							}}
 							autoFocus
-							className="text-white"
+							className="min-w-0 text-white"
 						/>
-						<p className="min-h-4 text-xs text-muted-foreground font-mono">
-							{slug ? slug : ""}
+						<p className="min-h-4 break-all text-xs text-muted-foreground font-mono">
+							{roomId ? `Room ID: ${roomId}` : ""}
 						</p>
 						{error && (
 							<p className="text-xs text-destructive font-medium mt-1">
@@ -76,7 +79,7 @@ export function ProjectDialogs({
 				<DialogContent showCloseButton>
 					<DialogHeader>
 						<DialogTitle>Rename Project</DialogTitle>
-						<DialogDescription>
+						<DialogDescription className="wrap-break-word ">
 							Renaming &ldquo;{activeProject?.name}&rdquo;
 						</DialogDescription>
 					</DialogHeader>
@@ -84,22 +87,17 @@ export function ProjectDialogs({
 					<Input
 						placeholder="Project name"
 						value={name}
+						maxLength={PROJECT_NAME_MAX_LENGTH}
 						onChange={(e) => handleNameChange(e.target.value)}
 						onKeyDown={(e) => {
 							if (e.key === "Enter" && name.trim() && !loading) submit();
 						}}
-						className="text-white"
+						className="min-w-0 text-white"
 						autoFocus
 					/>
 
-					<p className="min-h-4 text-xs text-muted-foreground font-mono">
-						{slug ? slug : ""}
-					</p>
-
 					{error && (
-						<p className="text-xs text-destructive font-medium mt-1">
-							{error}
-						</p>
+						<p className="text-xs text-destructive font-medium mt-1">{error}</p>
 					)}
 
 					<DialogFooter showCloseButton>
@@ -117,7 +115,7 @@ export function ProjectDialogs({
 				<DialogContent showCloseButton>
 					<DialogHeader>
 						<DialogTitle>Delete Project</DialogTitle>
-						<DialogDescription>
+						<DialogDescription className="wrap-break-word">
 							Are you sure you want to delete &ldquo;{activeProject?.name}
 							&rdquo;? This action cannot be undone.
 						</DialogDescription>
