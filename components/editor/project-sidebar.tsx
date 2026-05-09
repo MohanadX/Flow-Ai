@@ -9,8 +9,11 @@ import { Project } from "@/types/project";
 interface ProjectSidebarProps {
 	isOpen: boolean;
 	onClose: () => void;
-	projects: Project[];
+	ownedProjects: Project[];
+	sharedProjects: Project[];
+	activeProjectId?: string | null;
 	onNewProject: () => void;
+	onOpenProject: (project: Project) => void;
 	onRename: (project: Project) => void;
 	onDelete: (project: Project) => void;
 }
@@ -18,14 +21,14 @@ interface ProjectSidebarProps {
 export function ProjectSidebar({
 	isOpen,
 	onClose,
-	projects,
+	ownedProjects,
+	sharedProjects,
+	activeProjectId,
 	onNewProject,
+	onOpenProject,
 	onRename,
 	onDelete,
 }: ProjectSidebarProps) {
-	const myProjects = projects.filter((p) => p.isOwner);
-	const sharedProjects = projects.filter((p) => !p.isOwner);
-
 	return (
 		<>
 			{/* Mobile Backdrop */}
@@ -69,11 +72,13 @@ export function ProjectSidebar({
 							</TabsList>
 
 							<TabsContent value="my-projects" className="mt-4 space-y-1">
-								{myProjects.length > 0 ? (
-									myProjects.map((project) => (
+								{ownedProjects.length > 0 ? (
+									ownedProjects.map((project) => (
 										<ProjectItem
 											key={project.id}
 											project={project}
+											isActive={project.id === activeProjectId}
+											onOpen={() => onOpenProject(project)}
 											onRename={() => onRename(project)}
 											onDelete={() => onDelete(project)}
 										/>
@@ -90,7 +95,12 @@ export function ProjectSidebar({
 							<TabsContent value="shared" className="mt-4 space-y-1">
 								{sharedProjects.length > 0 ? (
 									sharedProjects.map((project) => (
-										<ProjectItem key={project.id} project={project} />
+										<ProjectItem
+											key={project.id}
+											project={project}
+											isActive={project.id === activeProjectId}
+											onOpen={() => onOpenProject(project)}
+										/>
 									))
 								) : (
 									<div className="flex flex-col items-center justify-center py-8 text-center">
@@ -122,19 +132,34 @@ export function ProjectSidebar({
 
 function ProjectItem({
 	project,
+	isActive,
+	onOpen,
 	onRename,
 	onDelete,
 }: {
 	project: Project;
+	isActive: boolean;
+	onOpen: () => void;
 	onRename?: () => void;
 	onDelete?: () => void;
 }) {
 	return (
-		<div className="group cursor-pointer flex items-center justify-between rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground">
-			<span className="truncate">{project.name}</span>
+		<div
+			className={cn(
+				"group flex items-center justify-between rounded-md text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
+				isActive && "bg-accent text-accent-foreground",
+			)}
+		>
+			<button
+				type="button"
+				className="min-w-0 flex-1 truncate px-3 py-2 text-left"
+				onClick={onOpen}
+			>
+				{project.name}
+			</button>
 
 			{project.isOwner && (
-				<div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+				<div className="flex items-center gap-1 pr-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
 					<Button
 						variant="ghost"
 						size="icon"

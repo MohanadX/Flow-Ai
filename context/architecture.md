@@ -28,6 +28,7 @@
 - Project records, spec records, and task run records belong in PostgreSQL.
 - Canvas content and Markdown output are stored in and retrieved from Vercel Blob.
 - The blob URL is stored in the database (canvasJsonPath, filePath) as the reference to the artifact.
+- Project IDs are also Liveblocks room IDs. New project creation uses a URL-safe slug plus a short random suffix so the database project ID and collaborative room ID remain aligned.
 
 ## Auth and Collaboration Model
 
