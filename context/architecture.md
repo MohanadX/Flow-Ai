@@ -8,6 +8,7 @@
 | UI               | Tailwind + shadcn/ui    | Component composition and styling                              |
 | Auth             | Clerk                   | User identity and route protection                             |
 | Database         | Prisma + PostgreSQL     | Relational metadata: projects, collaborators, specs, task runs |
+| Client fetching  | TanStack React Query    | Client-side data fetching, caching, and mutations              |
 | Canvas           | Liveblocks + React Flow | Real-time collaborative canvas, presence, and cursors          |
 | Background tasks | Trigger.dev             | Durable AI generation workflows                                |
 | Artifact storage | Vercel Blob             | Canvas snapshots and generated Markdown specs                  |
@@ -20,6 +21,20 @@
 - components — UI composition: canvas surfaces, sidebars, dialogs, and interactive elements.
 - prisma — Database schema and generated client output.
 - data — Legacy local directory. Not used for new artifacts.
+
+## Client-Side Data Fetching
+
+- All client-side data fetching uses **TanStack React Query** (`@tanstack/react-query`).
+- A single `QueryClient` is created in `components/providers/react-query-provider.tsx` and mounted once at the root layout via `ReactQueryProvider`. `ReactQueryDevtools` is included for development.
+- **`useQuery`** is used for reads (e.g. collaborator list in the share dialog). Data is cached per query key, automatically re-fetched when stale, and does not require manual loading state.
+- **`useMutation`** is used for writes (invite, remove collaborator). On success, `queryClient.invalidateQueries` re-fetches the relevant query so the list updates automatically.
+- Query keys follow a factory pattern: `collaboratorKeys.list(projectId)` to enable precise invalidation.
+- Do **not** use `useEffect` + `useState` for data fetching in client components. Use React Query instead.
+
+## Layout and Data Fetching Model
+
+- `layout.tsx` files are used aggressively to minimize duplicate fetching. For example, `app/editor/layout.tsx` fetches the user's project lists exactly once, allowing nested routes like `/editor` and `/editor/[projectId]` to focus solely on their own specific tasks and avoiding redundant `listProjectGroups` queries.
+- Client components dynamically derive their context (like `activeProjectId`) using `useParams()` where possible to prevent breaking the layout cache when navigating between sibling routes.
 
 ## Storage Model
 
