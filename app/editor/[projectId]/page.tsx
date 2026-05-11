@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Compass } from "lucide-react";
+import { Compass, TriangleAlert } from "lucide-react";
 import { AccessDenied } from "@/components/editor/access-denied";
 import { checkProjectAccess, getCurrentIdentity } from "@/lib/project-access";
 
@@ -19,7 +19,17 @@ export default async function ProjectWorkspacePage({
 		redirect("/sign-in");
 	}
 
-	const accessResult = await checkProjectAccess(projectId, identity);
+	let accessResult: Awaited<ReturnType<typeof checkProjectAccess>>;
+	try {
+		accessResult = await checkProjectAccess(projectId, identity);
+	} catch (error) {
+		console.error("Failed to check project access", {
+			error,
+			projectId,
+			userId: identity.userId,
+		});
+		return <WorkspaceError />;
+	}
 
 	if (!accessResult) {
 		return <AccessDenied />;
@@ -45,6 +55,22 @@ export default async function ProjectWorkspacePage({
 					Real-time canvas coming soon.
 				</p>
 			</div>
+		</div>
+	);
+}
+
+function WorkspaceError() {
+	return (
+		<div className="flex-1 flex flex-col items-center justify-center bg-base text-center h-full px-6">
+			<div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-surface-border bg-elevated mb-4">
+				<TriangleAlert className="h-5 w-5 text-warning" />
+			</div>
+			<h2 className="text-lg font-semibold text-copy-primary">
+				Workspace unavailable
+			</h2>
+			<p className="mt-2 max-w-sm text-sm text-copy-muted">
+				We could not verify access to this project. Please try again shortly.
+			</p>
 		</div>
 	);
 }

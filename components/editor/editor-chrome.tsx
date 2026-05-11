@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useState, createContext } from "react";
+import { ReactNode, useMemo, useState, createContext } from "react";
 import { useParams } from "next/navigation";
 import { EditorNavbar } from "@/components/editor/editor-navbar";
 import { ProjectSidebar } from "@/components/editor/project-sidebar";
@@ -33,11 +33,12 @@ export function EditorChrome({
 	const [isAiSidebarOpen, setIsAiSidebarOpen] = useState(false);
 	const [isShareOpen, setIsShareOpen] = useState(false);
 
-	const activeProject = activeProjectId
-		? [...ownedProjects, ...sharedProjects].find(
-				(p) => p.id === activeProjectId,
-			)
-		: null;
+	const activeProject = useMemo(() => {
+		if (!activeProjectId) return null;
+		return [...ownedProjects, ...sharedProjects].find(
+			(p) => p.id === activeProjectId,
+		);
+	}, [activeProjectId, ownedProjects, sharedProjects]);
 
 	return (
 		<EditorActionContext.Provider

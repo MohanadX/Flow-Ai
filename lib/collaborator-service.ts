@@ -6,6 +6,7 @@ import { ApiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const CLERK_USER_LIST_LIMIT = 500;
 
 export interface CollaboratorDto {
 	email: string;
@@ -91,11 +92,23 @@ export async function getCollaborators(
 		throw new ApiError(403, "FORBIDDEN", "Access denied.");
 	}
 
-	// Batch-enrich owner + all collaborator emails in a single Clerk call
+	// Enrich owner and collaborators with Clerk profile data.
 	const collaboratorEmails = project.collaborators.map((c) => c.email);
 	const ownerClerkUser = project.ownerId === userId
 		? callerUser
-		: await client.users.getUser(project.ownerId).catch(() => null);
+		: await client.users.getUser(project.ownerId).catch((error: unknown) => {
+				const errorDetails =
+					error instanceof Error
+						? { message: error.message, stack: error.stack }
+						: { message: String(error), stack: undefined };
+				console.error("Failed to load ownerClerkUser via client.users.getUser", {
+					error: errorDetails,
+					ownerId: project.ownerId,
+					callerUserId: callerUser.id,
+					callerEmails,
+				});
+				return null;
+			});
 
 	const ownerEmail =
 		ownerClerkUser?.emailAddresses[0]?.emailAddress ?? "";
@@ -174,25 +187,36 @@ async function enrichCollaborators(
 
 	const resolvedClient = client ?? (await clerkClient());
 
-	// Fetch Clerk users by email addresses
-	const clerkUsers = await resolvedClient.users.getUserList({
-		emailAddress: collaborators.map((c) => c.email),
-		limit: 500,
-	});
-
-	// Build a lookup map email → clerk user
+	// Fetch matching Clerk users in bounded batches and build a lookup map.
 	const clerkByEmail = new Map<
 		string,
 		{ name: string | null; imageUrl: string }
 	>();
+	const collaboratorEmails = Array.from(
+		new Set(collaborators.map((c) => c.email.toLowerCase())),
+	);
 
-	for (const u of clerkUsers.data) {
-		for (const emailObj of u.emailAddresses) {
-			const email = emailObj.emailAddress.toLowerCase();
-			const firstName = u.firstName ?? "";
-			const lastName = u.lastName ?? "";
-			const name = [firstName, lastName].filter(Boolean).join(" ") || null;
-			clerkByEmail.set(email, { name, imageUrl: u.imageUrl });
+	for (
+		let offset = 0;
+		offset < collaboratorEmails.length;
+		offset += CLERK_USER_LIST_LIMIT
+	) {
+		const clerkUsers = await resolvedClient.users.getUserList({
+			emailAddress: collaboratorEmails.slice(
+				offset,
+				offset + CLERK_USER_LIST_LIMIT,
+			),
+			limit: CLERK_USER_LIST_LIMIT,
+		});
+
+		for (const u of clerkUsers.data) {
+			for (const emailObj of u.emailAddresses) {
+				const email = emailObj.emailAddress.toLowerCase();
+				const firstName = u.firstName ?? "";
+				const lastName = u.lastName ?? "";
+				const name = [firstName, lastName].filter(Boolean).join(" ") || null;
+				clerkByEmail.set(email, { name, imageUrl: u.imageUrl });
+			}
 		}
 	}
 

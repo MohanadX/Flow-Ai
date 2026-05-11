@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, Loader2, Share2, Trash2, UserPlus } from "lucide-react";
 import Image from "next/image";
@@ -114,7 +114,7 @@ function MemberAvatar({
 	return (
 		<div className="h-8 w-8 rounded-full bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0">
 			<span className="text-xs font-medium text-brand">
-				{(name ?? email)[0].toUpperCase()}
+				{(name ?? email)[0]?.toUpperCase() ?? ""}
 			</span>
 		</div>
 	);
@@ -132,9 +132,14 @@ export function ShareDialog({
 	const [inviteEmail, setInviteEmail] = useState("");
 	const [copied, setCopied] = useState(false);
 	const [mutationError, setMutationError] = useState<string | null>(null);
+	const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	// ── list query ──────────────────────────────────────────────────────────
-	const { data, isLoading, error: queryError } = useQuery({
+	const {
+		data,
+		isLoading,
+		error: queryError,
+	} = useQuery({
 		queryKey: collaboratorKeys.list(projectId),
 		queryFn: () => fetchCollaborators(projectId),
 		enabled: open,
@@ -189,10 +194,24 @@ export function ShareDialog({
 	function handleCopyLink() {
 		const url = `${window.location.origin}/editor/${projectId}`;
 		navigator.clipboard.writeText(url).then(() => {
+			if (copyTimeoutRef.current) {
+				clearTimeout(copyTimeoutRef.current);
+			}
 			setCopied(true);
-			setTimeout(() => setCopied(false), 2000);
+			copyTimeoutRef.current = setTimeout(() => {
+				setCopied(false);
+				copyTimeoutRef.current = null;
+			}, 2000);
 		});
 	}
+
+	useEffect(() => {
+		return () => {
+			if (copyTimeoutRef.current) {
+				clearTimeout(copyTimeoutRef.current);
+			}
+		};
+	}, []);
 
 	const displayError =
 		mutationError ?? (queryError instanceof Error ? queryError.message : null);
@@ -329,7 +348,9 @@ export function ShareDialog({
 												{c.name}
 											</p>
 										)}
-										<p className="text-xs text-copy-muted truncate">{c.email}</p>
+										<p className="text-xs text-copy-muted truncate">
+											{c.email}
+										</p>
 									</div>
 
 									{/* Remove — owners only */}
