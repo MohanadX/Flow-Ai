@@ -5,7 +5,7 @@ change.
 
 ## Current Phase
 
-- Phase 7: Wire editor chrome to real project APIs (complete)
+- Phase 9: Share Dialog (complete)
 
 ## Current Goal
 
@@ -87,6 +87,44 @@ change.
   - Wrapped long room ID previews and project names inside project dialogs so long values do not overflow the modal
 - Project API hardening:
   - Removed the create-project ID pre-check race and mapped Prisma `P2002` ID conflicts to the existing `PROJECT_ID_CONFLICT` 409 response
+- 08-editor-workspace-shell:
+  - Created `components/editor/access-denied.tsx` with lock icon and return link
+  - Created `lib/project-access.ts` for evaluating user access against Prisma records
+  - Updated `/editor/[projectId]/page.tsx` to be a server component enforcing project access checks
+  - Updated workspace layout (`EditorChrome`) to include canvas and AI right sidebar placeholders
+  - Added Share button and AI toggle actions to `EditorNavbar`, showing the active project name
+  - Added radial gradient background to the canvas placeholder for a dynamic, sleek look
+- UI & Polish:
+  - Added brand color glowing effect to the active project item in the sidebar using `bg-brand/10`, `text-brand`, and drop-shadow variables
+  - Enhanced canvas placeholder in `/editor/[projectId]` with conic light rays (`--color-brand-dim`), radial gradients, and a glowing compass emoji container for a premium feel
+- Layout Optimization:
+  - Extracted `EditorChrome` to a shared `app/editor/layout.tsx` to fetch `listProjectGroups` only once
+  - Refactored `EditorChrome` to infer `activeProjectId` using `useParams()` instead of props
+  - Passed `projectActions.openCreate` downward using a new `EditorActionContext` for `app/editor/page.tsx`
+  - Replaced duplicate DB fetch calls across editor routes and prevented full layout re-renders on project navigation
+
+- 09-share-dialog:
+  - Created `lib/collaborator-service.ts` with list, invite, remove helpers and Clerk enrichment (display name + avatar via `clerkClient().users.getUserList`)
+  - Added `GET /api/projects/[projectId]/collaborators` (accessible to owner and collaborators)
+  - Added `POST /api/projects/[projectId]/collaborators` (owner-only invite, maps Prisma P2002 to 409 `ALREADY_COLLABORATOR`)
+  - Added `DELETE /api/projects/[projectId]/collaborators/[email]` (owner-only remove)
+  - Created `components/editor/share-dialog.tsx` with collaborator list, invite input, remove buttons, copy-link button with `Copied!` feedback, owner vs. read-only modes, and Clerk avatar/name display
+  - Wired `Share` button in `EditorNavbar` via new `onShare` prop and `isShareOpen` state in `EditorChrome`
+  - `npm run build` passes with zero errors
+- React Query setup:
+  - Installed `@tanstack/react-query` and `@tanstack/react-query-devtools`
+  - Created `components/providers/react-query-provider.tsx` — single `QueryClient` with 30 s stale time, `ReactQueryDevtools` in development
+  - Mounted `ReactQueryProvider` in root `app/layout.tsx` so all client components share one cache
+  - Migrated `components/editor/share-dialog.tsx` from manual `useEffect`/`useState` fetching to `useQuery` (collaborator list) and `useMutation` (invite + remove) with query-key invalidation on success
+  - `npm run build` passes with zero errors
+- Share dialog polish:
+  - Extended `GET /api/projects/[projectId]/collaborators` to return `{ owner: OwnerDto, collaborators: CollaboratorDto[] }` — owner enriched with Clerk name and avatar in the same request
+  - Added `OwnerDto` and `CollaboratorListDto` types to `lib/collaborator-service.ts`; owner Clerk lookup reuses the already-fetched `callerUser` when the viewer is the owner to avoid a redundant API call
+  - Owner row now appears pinned at the top of the member list — styled `bg-brand/10 border-brand/20`; carries a pill badge `Owner` in `text-brand / border-brand/30` matching the brand color theme
+  - Extracted a reusable `MemberAvatar` sub-component inside `share-dialog.tsx` to avoid duplicating avatar/initial logic
+  - Added `img.clerk.com` to `next.config.ts` `images.remotePatterns` so Clerk avatars render via `next/image`
+  - `npx tsc --noEmit` passes with zero errors
+
 
 ## In Progress
 
@@ -113,6 +151,8 @@ change.
 - Prisma server client module explicitly loads dotenv before reading `DATABASE_URL` for Prisma v7 runtime compatibility.
 - Project API routes return JSON envelopes (`{ projects }`, `{ project }`, or `{ error }`) and keep Prisma query/mutation logic in `lib/project-service.ts`.
 - New project creation uses a URL-safe slug plus short random suffix as the project ID so the project ID and Liveblocks room ID remain the same.
+- `app/editor/layout.tsx` acts as a shared layout to fetch project lists only once. `EditorChrome` reads `projectId` from URL params to minimize duplicate fetching between `app/editor` and `app/editor/[projectId]` routes.
+- All client-side data fetching uses TanStack React Query. `useQuery` handles reads with caching; `useMutation` handles writes and invalidates the relevant query key on success. Manual `useEffect`+`setState` fetching is not used in client components.
 
 ## Session Notes
 

@@ -44,8 +44,11 @@ export function ProjectSidebar({
 				aria-hidden={!isOpen}
 				inert={!isOpen ? true : undefined}
 				className={cn(
-					"fixed top-14 bottom-0 left-0 z-40 w-72 transform border-r border-border bg-card transition-transform duration-300 ease-in-out",
-					isOpen ? "translate-x-0" : "-translate-x-full pointer-events-none",
+					"fixed top-14 bottom-0 left-0 z-40 w-72 shrink-0 transform border-r border-border bg-card transition-all duration-300 ease-in-out",
+					"lg:static lg:top-0 lg:h-full lg:translate-x-0",
+					isOpen 
+						? "translate-x-0 lg:ml-0" 
+						: "-translate-x-full lg:-ml-72 pointer-events-none",
 				)}
 			>
 				<div className="flex h-full flex-col">
@@ -146,8 +149,10 @@ function ProjectItem({
 	return (
 		<div
 			className={cn(
-				"group flex items-center justify-between rounded-md text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
-				isActive && "bg-accent text-accent-foreground",
+				"group flex items-center justify-between rounded-md text-sm transition-all hover:bg-subtle hover:text-copy-primary",
+				isActive 
+					? "bg-brand/10 text-brand ring-1 ring-brand/30 shadow-[0_0_15px_var(--color-brand-dim)]" 
+					: "text-copy-secondary",
 			)}
 		>
 			<button
