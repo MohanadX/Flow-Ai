@@ -5,11 +5,11 @@ change.
 
 ## Current Phase
 
-- Phase 9: Share Dialog (complete)
+- Phase 12: Shape panel (complete)
 
 ## Current Goal
 
-- Done. Ready for next feature unit.
+- Done. Ready for the next canvas feature unit.
 
 ## Completed
 
@@ -132,6 +132,36 @@ change.
   - Cleared the share dialog copy-link timeout on repeat copy and unmount to avoid state updates after unmount
   - Memoized active project lookup in `EditorChrome`
   - `npx tsc --noEmit`, `npm run lint`, and `npm run build` pass with zero errors
+- Current UI issue fixes:
+  - Kept the project sidebar and AI sidebar as fixed overlay panels on all breakpoints so neither one pushes or resizes the center editor canvas
+  - Moved the shape panel into the React Flow tree so Liveblocks cursor presence remains active when hovering the bottom shape toolbar
+  - Added explicit shape panel pointer presence updates using React Flow screen-to-canvas coordinates so Liveblocks cursors do not disappear over toolbar controls
+  - `npx tsc --noEmit`, `npm run lint`, and `npm run build` pass with zero errors
+- 10-liveblocks-setup:
+  - Created `liveblocks.config.ts` with typed Presence (`cursor`, `isThinking`) and UserMeta (`displayName`, `avatarUrl`, `cursorColor`)
+  - Created `lib/liveblocks.ts` with a cached, lazy Liveblocks node client and deterministic user ID to cursor color mapping
+  - Added `POST /api/liveblocks-auth` to require Clerk auth, verify project access, create the Liveblocks room if needed, and issue a room-scoped session token
+  - Liveblocks auth attaches user display name, avatar URL, and generated cursor color to session metadata
+  - `npx tsc --noEmit`, `npm run lint`, and `npm run build` pass with zero errors
+- 11-base-canvas:
+  - Created shared canvas types in `types/canvas.ts` with node data (`label`, `color`, `shape`), `NODE_SHAPES`, `canvasNode`, and `canvasEdge`
+  - Created `components/editor/collaborative-canvas.tsx` as the client-side Liveblocks/React Flow wrapper
+  - Added `LiveblocksProvider`, `RoomProvider`, initial presence (`cursor: null`, `isThinking: false`), `ClientSideSuspense`, and a canvas error fallback
+  - Wired `useLiveblocksFlow({ suspense: true })` to React Flow with empty initial nodes and edges
+  - Rendered the base canvas with loose connections, `fitView`, `MiniMap`, dot-pattern background, and Liveblocks cursors
+  - Replaced the `/editor/[projectId]` workspace placeholder while keeping the page server-side
+  - Imported React Flow and Liveblocks canvas styles globally
+  - `npx tsc --noEmit`, `npm run lint`, and `npm run build` pass with zero errors
+- 12-shape-panel:
+  - Added shared shape drag metadata in `types/canvas.ts`, including default sizes and `SHAPE_DRAG_MIME_TYPE`
+  - Added a floating bottom-center pill toolbar with draggable icon buttons for rectangle, diamond, circle, pill, cylinder, and hexagon
+  - Shape drag payloads include the shape name and default width/height
+  - Added canvas `dragover` and `drop` handling in `components/editor/collaborative-canvas.tsx`
+  - Drop handling validates the payload, converts screen coordinates to React Flow canvas coordinates, and creates a new `canvasNode`
+  - New node IDs use the shape name, timestamp, and a local counter
+  - New nodes use an empty label, the default node color, the dragged shape value, and the dragged default size
+  - Added a basic `canvasNode` renderer that displays every shape as a bordered rectangle with centered label text
+  - `npx tsc --noEmit`, `npm run lint`, and `npm run build` pass with zero errors
 
 ## In Progress
 
@@ -160,6 +190,7 @@ change.
 - New project creation uses a URL-safe slug plus short random suffix as the project ID so the project ID and Liveblocks room ID remain the same.
 - `app/editor/layout.tsx` acts as a shared layout to fetch project lists only once. `EditorChrome` reads `projectId` from URL params to minimize duplicate fetching between `app/editor` and `app/editor/[projectId]` routes.
 - All client-side data fetching uses TanStack React Query. `useQuery` handles reads with caching; `useMutation` handles writes and invalidates the relevant query key on success. Manual `useEffect`+`setState` fetching is not used in client components.
+- Liveblocks rooms are created as private rooms (`defaultAccesses: []`), and the app issues scoped session tokens only after project access is verified.
 
 ## Session Notes
 
@@ -169,3 +200,4 @@ change.
 - Prisma migration `20260509082106_init_projects` was applied successfully to the configured PostgreSQL database.
 - Next.js 16 route handlers require awaiting dynamic `params`, so `/api/projects/[projectId]` uses promise-based route context parameters.
 - The required `context/architecture-context.md` file is currently named `context/architecture.md`; that file was used for architecture context in this feature.
+- `LIVEBLOCKS_SECRET_KEY` is required at runtime for `/api/liveblocks-auth`; the Liveblocks client is lazy so production builds do not fail during route module import.
