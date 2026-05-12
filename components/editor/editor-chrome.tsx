@@ -87,6 +87,8 @@ export function EditorChrome({
 								/>
 							)}
 							<div
+								aria-hidden={!isAiSidebarOpen}
+								inert={!isAiSidebarOpen}
 								className={cn(
 									"fixed top-14 bottom-0 right-0 z-40 w-80 shrink-0 transform border-l border-border bg-base transition-all duration-300 ease-in-out flex flex-col items-center justify-center p-4",
 									isAiSidebarOpen

@@ -230,7 +230,7 @@ function CanvasNodeRenderer({ data, selected }: NodeProps<CanvasNode>) {
 			className={cn(
 				"flex h-full min-h-12 w-full min-w-24 items-center justify-center rounded-xl border px-4 py-2 text-center text-sm font-medium text-copy-primary shadow-lg",
 				selected
-					? "border-brand shadow-[0_0_20px_var(--color-brand-dim)]"
+					? "border-brand shadow-[0_0_20px_(--color-brand-dim)]"
 					: "border-surface-border-subtle",
 			)}
 			style={{ backgroundColor: data.color }}
