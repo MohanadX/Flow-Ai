@@ -148,7 +148,7 @@ function ProjectItem({
 			className={cn(
 				"group flex items-center justify-between rounded-md text-sm transition-all hover:bg-subtle hover:text-copy-primary",
 				isActive
-					? "bg-brand/10 text-brand ring-1 ring-brand/30 shadow-[0_0_15px_(--color-brand-dim)]"
+					? "bg-brand/10 text-brand ring-1 ring-brand/30 shadow-[0_0_15px_var(--color-brand-dim)]"
 					: "text-copy-secondary",
 			)}
 		>
