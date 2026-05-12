@@ -94,24 +94,27 @@ export async function getCollaborators(
 
 	// Enrich owner and collaborators with Clerk profile data.
 	const collaboratorEmails = project.collaborators.map((c) => c.email);
-	const ownerClerkUser = project.ownerId === userId
-		? callerUser
-		: await client.users.getUser(project.ownerId).catch((error: unknown) => {
-				const errorDetails =
-					error instanceof Error
-						? { message: error.message, stack: error.stack }
-						: { message: String(error), stack: undefined };
-				console.error("Failed to load ownerClerkUser via client.users.getUser", {
-					error: errorDetails,
-					ownerId: project.ownerId,
-					callerUserId: callerUser.id,
-					callerEmails,
+	const ownerClerkUser =
+		project.ownerId === userId
+			? callerUser
+			: await client.users.getUser(project.ownerId).catch((error: unknown) => {
+					const errorDetails =
+						error instanceof Error
+							? { message: error.message, stack: error.stack }
+							: { message: String(error), stack: undefined };
+					console.error(
+						"Failed to load ownerClerkUser via client.users.getUser",
+						{
+							error: errorDetails,
+							ownerId: project.ownerId,
+							callerUserId: callerUser.id,
+							callerEmails,
+						},
+					);
+					return null;
 				});
-				return null;
-			});
 
-	const ownerEmail =
-		ownerClerkUser?.emailAddresses[0]?.emailAddress ?? "";
+	const ownerEmail = ownerClerkUser?.emailAddresses[0]?.emailAddress ?? "";
 	const ownerFirstName = ownerClerkUser?.firstName ?? "";
 	const ownerLastName = ownerClerkUser?.lastName ?? "";
 	const ownerName =
@@ -178,7 +181,8 @@ export async function removeCollaborator(
 	}
 }
 
-// Enrich a list of collaborator DB records with Clerk display name and avatar.
+/**  Enrich a list of collaborator DB records with Clerk display name and avatar.
+ */
 async function enrichCollaborators(
 	collaborators: { email: string; createdAt: Date }[],
 	client: Awaited<ReturnType<typeof clerkClient>> | null = null,
@@ -194,7 +198,7 @@ async function enrichCollaborators(
 	>();
 	const collaboratorEmails = Array.from(
 		new Set(collaborators.map((c) => c.email.toLowerCase())),
-	);
+	); // normalize & deduplicate
 
 	for (
 		let offset = 0;
@@ -209,6 +213,7 @@ async function enrichCollaborators(
 			limit: CLERK_USER_LIST_LIMIT,
 		});
 
+		// build the look up table with the clerk data
 		for (const u of clerkUsers.data) {
 			for (const emailObj of u.emailAddresses) {
 				const email = emailObj.emailAddress.toLowerCase();

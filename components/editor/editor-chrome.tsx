@@ -89,10 +89,9 @@ export function EditorChrome({
 							<div
 								className={cn(
 									"fixed top-14 bottom-0 right-0 z-40 w-80 shrink-0 transform border-l border-border bg-base transition-all duration-300 ease-in-out flex flex-col items-center justify-center p-4",
-									"lg:static lg:top-0 lg:h-full lg:translate-x-0",
 									isAiSidebarOpen
-										? "translate-x-0 lg:mr-0"
-										: "translate-x-full lg:-mr-80 pointer-events-none",
+										? "translate-x-0"
+										: "translate-x-full pointer-events-none",
 								)}
 							>
 								<p className="text-copy-muted text-sm">AI Chat Placeholder</p>

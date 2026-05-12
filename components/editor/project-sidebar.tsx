@@ -45,10 +45,7 @@ export function ProjectSidebar({
 				inert={!isOpen ? true : undefined}
 				className={cn(
 					"fixed top-14 bottom-0 left-0 z-40 w-72 shrink-0 transform border-r border-border bg-card transition-all duration-300 ease-in-out",
-					"lg:static lg:top-0 lg:h-full lg:translate-x-0",
-					isOpen 
-						? "translate-x-0 lg:ml-0" 
-						: "-translate-x-full lg:-ml-72 pointer-events-none",
+					isOpen ? "translate-x-0" : "-translate-x-full pointer-events-none",
 				)}
 			>
 				<div className="flex h-full flex-col">
