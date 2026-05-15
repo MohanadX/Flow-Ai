@@ -50,6 +50,8 @@ export function CanvasEdgeRenderer({
 		borderRadius: 8,
 	});
 
+	const didCancelEditRef = useRef(false);
+
 	// Focus input immediately when editing starts
 	useEffect(() => {
 		if (!isEditing || !inputRef.current) return;
@@ -58,12 +60,14 @@ export function CanvasEdgeRenderer({
 	}, [isEditing]);
 
 	function openEditor() {
+		didCancelEditRef.current = false;
 		setDraft(label);
 		setIsEditing(true);
 	}
 
 	const commitLabel = useCallback(
 		(value: string) => {
+			didCancelEditRef.current = false;
 			setIsEditing(false);
 			reactFlow.updateEdgeData(id, { label: value.trim() });
 		},
@@ -74,9 +78,11 @@ export function CanvasEdgeRenderer({
 		event.stopPropagation();
 		if (event.key === "Enter") {
 			event.preventDefault();
+			didCancelEditRef.current = false;
 			commitLabel(draft);
 		} else if (event.key === "Escape") {
 			event.preventDefault();
+			didCancelEditRef.current = true;
 			setIsEditing(false);
 		}
 	}
@@ -136,7 +142,13 @@ export function CanvasEdgeRenderer({
 							ref={inputRef}
 							value={draft}
 							onChange={(e) => setDraft(e.target.value)}
-							onBlur={() => commitLabel(draft)}
+							onBlur={() => {
+								if (didCancelEditRef.current) {
+									didCancelEditRef.current = false;
+									return;
+								}
+								commitLabel(draft);
+							}}
 							onKeyDown={handleKeyDown}
 							onPointerDown={(e) => e.stopPropagation()}
 							onClick={(e) => e.stopPropagation()}

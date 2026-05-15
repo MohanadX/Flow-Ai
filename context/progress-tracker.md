@@ -130,6 +130,7 @@ change.
   - Changed collaborator Clerk enrichment to fetch email matches in 500-address batches so projects with more than 500 collaborators are not truncated by a single request limit
   - Added a workspace access-check error fallback in `/editor/[projectId]` while preserving `AccessDenied` for missing or unauthorized projects
   - Cleared the share dialog copy-link timeout on repeat copy and unmount to avoid state updates after unmount
+  - Persisted failed Liveblocks room deletions to a new `pending_liveblocks_cleanup` table for durable retry and emitted structured failure metadata including `projectId`, `roomId`, and error details
   - Memoized active project lookup in `EditorChrome`
   - `npx tsc --noEmit`, `npm run lint`, and `npm run build` pass with zero errors
 - Current UI issue fixes:
