@@ -1,0 +1,18 @@
+model PendingLiveblocksCleanup {
+  id           String    @id @default(cuid())
+  projectId    String
+  roomId       String
+  errorCode    String?
+  errorMessage String?
+  errorStack   String?
+  createdAt    DateTime  @default(now())
+  processed    Boolean   @default(false)
+  attemptCount Int       @default(0)
+  lastAttemptAt DateTime?
+  processedAt  DateTime?
+
+  @@unique([projectId, roomId], map: "pending_liveblocks_cleanup_project_room_uidx")
+  @@index([projectId])
+  @@index([roomId])
+  @@map("pending_liveblocks_cleanup")
+}

@@ -5,11 +5,11 @@ change.
 
 ## Current Phase
 
-- Phase 12: Shape panel (complete)
+- Phase 18: Starter Templates (complete)
 
 ## Current Goal
 
-- Done. Ready for the next canvas feature unit.
+- Done. Ready for the next project feature unit.
 
 ## Completed
 
@@ -130,6 +130,7 @@ change.
   - Changed collaborator Clerk enrichment to fetch email matches in 500-address batches so projects with more than 500 collaborators are not truncated by a single request limit
   - Added a workspace access-check error fallback in `/editor/[projectId]` while preserving `AccessDenied` for missing or unauthorized projects
   - Cleared the share dialog copy-link timeout on repeat copy and unmount to avoid state updates after unmount
+  - Persisted failed Liveblocks room deletions to a new `pending_liveblocks_cleanup` table for durable retry and emitted structured failure metadata including `projectId`, `roomId`, and error details
   - Memoized active project lookup in `EditorChrome`
   - `npx tsc --noEmit`, `npm run lint`, and `npm run build` pass with zero errors
 - Current UI issue fixes:
@@ -162,14 +163,71 @@ change.
   - New nodes use an empty label, the default node color, the dragged shape value, and the dragged default size
   - Added a basic `canvasNode` renderer that displays every shape as a bordered rectangle with centered label text
   - `npx tsc --noEmit`, `npm run lint`, and `npm run build` pass with zero errors
+- 13-node-shape:
+  - Replaced the placeholder node renderer with shape-specific rendering for all supported node shapes
+  - Rectangle, pill, and circle nodes render with CSS backgrounds, borders, and shape-specific radius
+  - Diamond, hexagon, and cylinder nodes render as scalable inline SVG shapes
+  - Node borders remain subtle at rest and switch to brand-highlighted strokes/borders when selected
+  - Added a cursor-following drag ghost preview that uses the dragged shape type and default drop size
+  - Drag preview state clears on drop and drag cancellation without changing existing node creation behavior
+  - `npx tsc --noEmit`, `npm run lint`, and `npm run build` pass with zero errors
+- 14-node-editing:
+  - Added shared minimum node sizes and an empty-label placeholder to `types/canvas.ts`
+  - Added selected-node resize controls with subtle dark-canvas handle styling and minimum size enforcement
+  - Circle nodes keep their aspect ratio while resizing so the shape remains circular
+  - Added inline node label editing via a centered textarea opened from the node label area on double-click
+  - Label updates now flow through collaborative node state on every keystroke using the existing React Flow and Liveblocks sync path
+  - Empty node labels render a centered `Untitled` placeholder without changing node size
+  - Text editing interactions use `nodrag` and `nopan` behavior so they do not drag nodes or pan the canvas
+  - `npx tsc --noEmit`, `npm run lint`, and `npm run build` pass with zero errors
+- 15-nodes-color-toolbar:
+  - Added `NODE_COLORS` to `types/canvas.ts` and `textColor` to `CanvasNodeData`
+  - Updated node creation payload in `collaborative-canvas.tsx` to include both `color` and `textColor` using predefined neutral defaults
+  - Added `NodeToolbar` from `@xyflow/react` to `CanvasNodeRenderer` to show a floating color swatch toolbar above selected nodes
+  - Swatches are styled with exact colors, glowing hover effects using `boxShadow`, and a brand focus ring when active
+  - Selecting a color immediately updates both `color` and `textColor` via `reactFlow.updateNodeData`
+  - Connected the text color to the node's label rendering (`button` and `textarea`) via `style={{ color: data.textColor }}`
+  - The toolbar requires no server calls, relying on existing Liveblocks/React Flow synchronization
+  - `npm run build` passes with zero errors
+- 16-edge-behaviour:
+  - Updated `CanvasEdgeData` in `types/canvas.ts` to an interface with an optional `label` string so edge labels flow through the existing collaborative data path
+  - Created `components/editor/canvas-edge.tsx` — `CanvasEdgeRenderer` uses `getSmoothStepPath` for clean right-angle routing with rounded corners (borderRadius: 8)
+  - Invisible 20px transparent hit-path overlays the visible 1.5px path so edges are easy to hover/click without looking thicker
+  - Edge stroke is dimmed at rest (`--color-copy-faint`), brightens on hover (`--color-copy-secondary`), and is full-bright when selected (`--color-copy-primary`) with a 0.15s CSS transition
+  - Arrow marker (`arrowclosed`, 14×14) applied via `defaultEdgeOptions` so every new connection gets it automatically
+  - `EdgeLabelRenderer` positions the label container at the midpoint coordinates returned by `getSmoothStepPath` — no manual calculation
+  - Double-clicking an edge opens an auto-width `<input>` at the midpoint; saves on blur, Enter, or Escape
+  - Label interactions use `nodrag nopan` + `stopPropagation` to prevent canvas drag/pan while typing
+  - Saved labels render as small pill badges; selected edges without a label show a dashed ghost "Add label…" hint
+  - `CanvasNodeHandles` updated — each side now has a visible source handle and a hidden zero-pointer-events target handle so any side can be a connection origin or destination
+  - 17-canvas-ergonomics:
+  - Created `hooks/use-keyboard-shortcuts.ts` to handle canvas-specific key bindings
+  - Integrated `zoomIn`, `zoomOut`, and `fitView` React Flow actions with short (200ms) animations
+  - Wired `Undo` and `Redo` buttons to Liveblocks history via `useUndo`, `useRedo`, `useCanUndo`, and `useCanRedo` hooks
+  - Implemented a floating pill-shaped `CanvasControlBar` at the bottom-left with group dividers
+  - Added tooltips and keyboard shortcut hints to control bar buttons
+  - Keyboard shortcuts (+, -, Cmd+Z, Cmd+Shift+Z, Cmd+Y) are globally active but automatically ignore editable fields (inputs, textareas, contenteditable)
+  - Removed the `MiniMap` from the canvas as per requirements
+  - Fixed type safety issues with generic `useKeyboardShortcuts` hook
+  - Fixed "Cannot access refs during render" error by passing the React Flow instance ref object instead of its current value to the shortcuts hook
+  - Fixed Redo keyboard shortcut (`Ctrl+Shift+Z`) bug by using `event.code === "KeyZ"` to bypass OS-specific modifier behavior that caused `event.key` to evaluate incorrectly depending on Caps Lock state.
+  - `npx tsc --noEmit` and `npm run build` pass with zero errors
+- 18-starter-template:
+  - Created `components/editor/starter-templates.ts` with `CanvasTemplate` type and predefined templates (microservices, CI/CD, event-driven).
+  - Created `components/editor/starter-templates-modal.tsx` with template cards and lightweight SVG diagram previews.
+  - Added a `Templates` button to `EditorNavbar` that dispatches a custom event `open-starter-templates`.
+  - Handled the event in `CollaborativeCanvas` to open the modal.
+  - Implemented `handleImportTemplate` to clear the existing canvas using `onNodesChange` and `onEdgesChange` with `remove` actions, add the template nodes and edges with `add` actions, and fit the view.
+  - `npx tsc --noEmit` passes with zero errors.
+- Current issue fixes:
+  - Fixed a stale data flash in the project sidebar during project creation, renaming, and deletion by implementing React `useOptimistic` updates for `ownedProjects` and `sharedProjects`.
+  - Added Liveblocks room deletion when a project is removed so persistent room state does not remain behind after DB cleanup.
+  - Added `router.refresh()` alongside `router.push()` in the navigation transitions because Next.js App Router does not automatically refetch parent layout data when navigating to child routes.
+  - Investigated updating the project `roomId` on rename, but intentionally kept the Project ID immutable to prevent destroying the associated Liveblocks canvas data.
 
 ## In Progress
 
 - None.
-
-## Next Up
-
-- Canvas implementation (Real-time collaborative canvas with React Flow and Liveblocks)
 
 ## Open Questions
 

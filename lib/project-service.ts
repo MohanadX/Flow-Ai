@@ -6,6 +6,7 @@ import {
 } from "@/app/generated/prisma/client";
 import { ApiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { getLiveblocksClient } from "@/lib/liveblocks";
 import { slugify } from "@/lib/utils";
 import type { Project, ProjectLists } from "@/types/project";
 
@@ -145,7 +146,97 @@ export async function deleteProject(
 		where: { id: projectId },
 	});
 
+	try {
+		await getLiveblocksClient().deleteRoom(projectId);
+	} catch (error) {
+		const errorMeta = getErrorMetadata(error);
+
+		try {
+			await recordPendingLiveblocksCleanup(projectId, projectId, errorMeta);
+		} catch (persistError) {
+			console.error(
+				"Failed to persist pending Liveblocks cleanup",
+				projectId,
+				projectId,
+				persistError,
+			);
+		}
+
+		console.error({
+			event: "liveblocks_room_deletion_failed",
+			projectId,
+			roomId: projectId,
+			isPersisted: true,
+			...errorMeta,
+		});
+	}
+
 	return serializeProject(project, ownerId);
+}
+
+function getErrorMetadata(error: unknown) {
+	if (error instanceof Error) {
+		return {
+			code: (error as { code?: string }).code ?? null,
+			message: error.message,
+			stack: error.stack ?? null,
+		};
+	}
+
+	if (typeof error === "object" && error !== null) {
+		return {
+			code: (error as { code?: string }).code ?? null,
+			message: JSON.stringify(error),
+			stack: null,
+		};
+	}
+
+	return {
+		code: null,
+		message: String(error),
+		stack: null,
+	};
+}
+
+async function recordPendingLiveblocksCleanup(
+	projectId: string,
+	roomId: string,
+	errorMeta: {
+		code: string | null;
+		message: string;
+		stack: string | null;
+	},
+) {
+	await prisma.$executeRaw`
+		INSERT INTO pending_liveblocks_cleanup (
+			project_id,
+			room_id,
+			error_code,
+			error_message,
+			error_stack,
+			created_at,
+			processed,
+			attempt_count
+		)
+		VALUES (
+			${projectId},
+			${roomId},
+			${errorMeta.code},
+			${errorMeta.message},
+			${errorMeta.stack},
+			NOW(),
+			false,
+			0
+		)
+		ON CONFLICT (project_id, room_id) DO UPDATE
+		SET
+			error_code = EXCLUDED.error_code,
+			error_message = EXCLUDED.error_message,
+			error_stack = EXCLUDED.error_stack,
+			last_attempt_at = NOW(),
+			attempt_count = pending_liveblocks_cleanup.attempt_count + 1,
+			processed = false;
+	`;
 }
 
 async function assertProjectOwner(
