@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useTransition, useOptimistic } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { slugify } from "@/lib/utils";
@@ -22,6 +22,11 @@ interface ApiErrorResponseBody {
 	};
 }
 
+type OptimisticAction =
+	| { type: "add"; project: Project }
+	| { type: "update"; project: Project }
+	| { type: "remove"; projectId: string; isOwner: boolean };
+
 const PROJECT_NAME_MAX_LENGTH = 50;
 const PROJECT_ID_MAX_LENGTH = 80;
 const ROOM_SUFFIX_LENGTH = 6;
@@ -39,10 +44,31 @@ export function useProjectActions({
 	const [roomSuffix, setRoomSuffix] = useState("");
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [, startTransition] = useTransition();
+
+	const [optimisticOwned, dispatchOptimisticOwned] = useOptimistic<Project[], OptimisticAction>(
+		ownedProjects,
+		(state, action) => {
+			if (action.type === "add") return action.project.isOwner ? [action.project, ...state] : state;
+			if (action.type === "update") return state.map((p) => (p.id === action.project.id ? action.project : p));
+			if (action.type === "remove") return action.isOwner ? state.filter((p) => p.id !== action.projectId) : state;
+			return state;
+		}
+	);
+
+	const [optimisticShared, dispatchOptimisticShared] = useOptimistic<Project[], OptimisticAction>(
+		sharedProjects,
+		(state, action) => {
+			if (action.type === "add") return !action.project.isOwner ? [action.project, ...state] : state;
+			if (action.type === "update") return state.map((p) => (p.id === action.project.id ? action.project : p));
+			if (action.type === "remove") return !action.isOwner ? state.filter((p) => p.id !== action.projectId) : state;
+			return state;
+		}
+	);
 
 	const projects = useMemo(
-		() => [...ownedProjects, ...sharedProjects],
-		[ownedProjects, sharedProjects],
+		() => [...optimisticOwned, ...optimisticShared],
+		[optimisticOwned, optimisticShared],
 	);
 
 	const roomId = useMemo(() => {
@@ -124,8 +150,13 @@ export function useProjectActions({
 
 				const body = await parseProjectResponse(response);
 
+				startTransition(() => {
+					dispatchOptimisticOwned({ type: "add", project: body.project });
+					dispatchOptimisticShared({ type: "add", project: body.project });
+					router.push(`/editor/${body.project.id}`);
+					router.refresh();
+				});
 				close();
-				router.push(`/editor/${body.project.id}`);
 				return;
 			}
 
@@ -137,9 +168,14 @@ export function useProjectActions({
 					body: JSON.stringify({ name: trimmedName }),
 				});
 
-				await parseProjectResponse(response);
+				const body = await parseProjectResponse(response);
+				
+				startTransition(() => {
+					dispatchOptimisticOwned({ type: "update", project: body.project });
+					dispatchOptimisticShared({ type: "update", project: body.project });
+					router.refresh();
+				});
 				close();
-				router.refresh();
 				return;
 			}
 
@@ -153,13 +189,17 @@ export function useProjectActions({
 					activeProject.id === activeProjectId ||
 					pathname === `/editor/${activeProject.id}`;
 
+				startTransition(() => {
+					dispatchOptimisticOwned({ type: "remove", projectId: activeProject.id, isOwner: activeProject.isOwner });
+					dispatchOptimisticShared({ type: "remove", projectId: activeProject.id, isOwner: activeProject.isOwner });
+					if (isDeletingActiveProject) {
+						router.replace("/editor");
+						router.refresh();
+					} else {
+						router.refresh();
+					}
+				});
 				close();
-
-				if (isDeletingActiveProject) {
-					router.replace("/editor");
-				} else {
-					router.refresh();
-				}
 			}
 		} catch (submitError) {
 			setError(
@@ -180,12 +220,15 @@ export function useProjectActions({
 		pathname,
 		roomSuffix,
 		router,
+		startTransition,
+		dispatchOptimisticOwned,
+		dispatchOptimisticShared,
 	]);
 
 	return {
 		projects,
-		ownedProjects,
-		sharedProjects,
+		ownedProjects: optimisticOwned,
+		sharedProjects: optimisticShared,
 		dialogType,
 		activeProject,
 		name,

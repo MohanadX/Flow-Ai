@@ -1,4 +1,4 @@
-import { PanelLeftClose, PanelLeftOpen, Share2, Sparkles } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Share2, Sparkles, LayoutTemplate } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { UserButton } from "@clerk/nextjs";
 
@@ -49,6 +49,15 @@ export function EditorNavbar({
 			<div className="flex items-center justify-end gap-2">
 				{projectName && (
 					<>
+						<Button
+							variant="outline"
+							size="sm"
+							className="hidden sm:flex"
+							onClick={() => window.dispatchEvent(new CustomEvent<void>("open-starter-templates"))}
+						>
+							<LayoutTemplate className="mr-2 h-4 w-4" />
+							Templates
+						</Button>
 						<Button
 							variant="outline"
 							size="sm"

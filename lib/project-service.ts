@@ -6,6 +6,7 @@ import {
 } from "@/app/generated/prisma/client";
 import { ApiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { getLiveblocksClient } from "@/lib/liveblocks";
 import { slugify } from "@/lib/utils";
 import type { Project, ProjectLists } from "@/types/project";
 
@@ -144,6 +145,16 @@ export async function deleteProject(
 	const project = await prisma.project.delete({
 		where: { id: projectId },
 	});
+
+	try {
+		await getLiveblocksClient().deleteRoom(projectId);
+	} catch (error) {
+		console.error(
+			"Failed to delete Liveblocks room for project",
+			projectId,
+			error,
+		);
+	}
 
 	return serializeProject(project, ownerId);
 }
