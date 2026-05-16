@@ -45,6 +45,15 @@ export interface CanvasEdgeData extends Record<string, unknown> {
 export type CanvasNode = Node<CanvasNodeData, CanvasNodeType>;
 export type CanvasEdge = Edge<CanvasEdgeData, CanvasEdgeType>;
 
+export interface CanvasSnapshot {
+	nodes: CanvasNode[];
+	edges: CanvasEdge[];
+	version: 1;
+	savedAt: string;
+}
+
+export type CanvasSaveStatus = "idle" | "saving" | "saved" | "error";
+
 export interface ShapeSize {
 	width: number;
 	height: number;

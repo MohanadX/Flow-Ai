@@ -11,7 +11,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { Cursors, useLiveblocksFlow } from "@liveblocks/react-flow";
+import { Cursors, type CursorsCursorProps, useLiveblocksFlow } from "@liveblocks/react-flow";
 import {
 	ClientSideSuspense,
 	LiveblocksProvider,
@@ -21,6 +21,7 @@ import {
 	useRedo,
 	useUndo,
 	useUpdateMyPresence,
+	useOther,
 } from "@liveblocks/react/suspense";
 import {
 	Background,
@@ -51,10 +52,15 @@ import {
 	Plus,
 	Minus,
 	Maximize,
+	Save,
+	CheckCircle2,
+	AlertCircle,
+	Loader2,
 } from "lucide-react";
 
 import { CanvasEdgeRenderer } from "@/components/editor/canvas-edge";
 import { CanvasErrorBoundary } from "@/components/editor/canvas-error-boundary";
+import { PresenceAvatars } from "@/components/editor/presence-avatars";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -70,10 +76,13 @@ import {
 	isNodeShape,
 	type CanvasEdge,
 	type CanvasNode,
+	type CanvasSaveStatus,
+	type CanvasSnapshot,
 	type NodeShape,
 	type ShapeDragPayload,
 } from "@/types/canvas";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useCanvasAutosave } from "@/hooks/use-canvas-autosave";
 
 interface CollaborativeCanvasProps {
 	roomId: string;
@@ -126,7 +135,7 @@ export function CollaborativeCanvas({ roomId }: CollaborativeCanvasProps) {
 					initialPresence={{ cursor: null, isThinking: false }}
 				>
 					<ClientSideSuspense fallback={<CanvasLoadingState />}>
-						<BaseCanvas />
+						<BaseCanvas roomId={roomId} />
 					</ClientSideSuspense>
 				</RoomProvider>
 			</CanvasErrorBoundary>
@@ -134,16 +143,24 @@ export function CollaborativeCanvas({ roomId }: CollaborativeCanvasProps) {
 	);
 }
 
-function BaseCanvas() {
+interface BaseCanvasProps {
+	roomId: string;
+}
+
+function BaseCanvas({ roomId }: BaseCanvasProps) {
 	const reactFlowInstanceRef = useRef<ReactFlowInstance<
 		CanvasNode,
 		CanvasEdge
 	> | null>(null);
+	const latestCanvasCountRef = useRef({ nodes: 0, edges: 0 });
 	const nodeCounterRef = useRef(0);
 	const [dragPreview, setDragPreview] = useState<ShapeDragPreviewState | null>(
 		null,
 	);
 	const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
+	const [isCanvasLoadChecked, setIsCanvasLoadChecked] = useState(false);
+	const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
+	const updateMyPresence = useUpdateMyPresence();
 
 	const nodeTypes = useMemo(
 		() =>
@@ -184,6 +201,93 @@ function BaseCanvas() {
 				initial: [],
 			},
 		});
+	const autosave = useCanvasAutosave({
+		projectId: roomId,
+		nodes,
+		edges,
+		enabled: isCanvasLoadChecked,
+	});
+
+	useEffect(() => {
+		latestCanvasCountRef.current = {
+			nodes: nodes.length,
+			edges: edges.length,
+		};
+	}, [edges.length, nodes.length]);
+
+	useEffect(() => {
+		if (isCanvasLoadChecked) return;
+
+		if (nodes.length > 0 || edges.length > 0) {
+			setIsCanvasLoadChecked(true);
+			return;
+		}
+
+		const controller = new AbortController();
+
+		async function loadSavedCanvas() {
+			try {
+				const response = await fetch(`/api/projects/${roomId}/canvas`, {
+					signal: controller.signal,
+				});
+
+				if (!response.ok) {
+					const body = await response.json().catch(() => null);
+					const message = getCanvasApiErrorMessage(body);
+					throw new Error(message ?? "Saved canvas could not be loaded.");
+				}
+
+				const body: unknown = await response.json();
+				const snapshot = parseCanvasLoadResponse(body);
+				const latestCount = latestCanvasCountRef.current;
+
+				if (
+					snapshot &&
+					latestCount.nodes === 0 &&
+					latestCount.edges === 0
+				) {
+					if (snapshot.nodes.length > 0) {
+						onNodesChange(
+							snapshot.nodes.map((node) => ({ type: "add" as const, item: node })),
+						);
+					}
+
+					if (snapshot.edges.length > 0) {
+						onEdgesChange(
+							snapshot.edges.map((edge) => ({ type: "add" as const, item: edge })),
+						);
+					}
+
+					window.setTimeout(() => {
+						reactFlowInstanceRef.current?.fitView({ duration: 350 });
+					}, 50);
+				}
+			} catch (error) {
+				if (controller.signal.aborted) return;
+
+				setLoadErrorMessage(
+					error instanceof Error
+						? error.message
+						: "Saved canvas could not be loaded.",
+				);
+			} finally {
+				if (!controller.signal.aborted) {
+					setIsCanvasLoadChecked(true);
+				}
+			}
+		}
+
+		void loadSavedCanvas();
+
+		return () => controller.abort();
+	}, [
+		edges.length,
+		isCanvasLoadChecked,
+		nodes.length,
+		onEdgesChange,
+		onNodesChange,
+		roomId,
+	]);
 
 	useEffect(() => {
 		const handleOpenTemplates = () => setIsTemplatesModalOpen(true);
@@ -252,8 +356,8 @@ function BaseCanvas() {
 			id: `${payload.shape}-${Date.now()}-${nodeCounterRef.current}`,
 			type: CANVAS_NODE_TYPE,
 			position: {
-				x: position.x,
-				y: position.y,
+				x: position.x - payload.width / 2,
+				y: position.y - payload.height / 2,
 			},
 			width: payload.width,
 			height: payload.height,
@@ -306,11 +410,29 @@ function BaseCanvas() {
 		);
 	}
 
+	function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+		const reactFlowInstance = reactFlowInstanceRef.current;
+		if (!reactFlowInstance) return;
+
+		updateMyPresence({
+			cursor: reactFlowInstance.screenToFlowPosition({
+				x: event.clientX,
+				y: event.clientY,
+			}),
+		});
+	}
+
+	function handlePointerLeave() {
+		updateMyPresence({ cursor: null });
+	}
+
 	return (
 		<div
 			className="relative h-full w-full bg-base"
 			onDragOver={handleDragOver}
 			onDrop={handleDrop}
+			onPointerMove={handlePointerMove}
+			onPointerLeave={handlePointerLeave}
 		>
 			<ReactFlow<CanvasNode, CanvasEdge>
 				nodes={nodes}
@@ -322,25 +444,31 @@ function BaseCanvas() {
 				onEdgesChange={onEdgesChange}
 				onConnect={onConnect}
 				onDelete={onDelete}
+				deleteKeyCode={["Backspace", "Delete"]}
+				multiSelectionKeyCode="Shift"
 				onInit={(instance) => {
 					reactFlowInstanceRef.current = instance;
 				}}
 				connectionMode={ConnectionMode.Loose}
 				fitView
 			>
-				<Cursors />
+				<Cursors components={{ Cursor: CanvasCursor }} />
 				<Background variant={BackgroundVariant.Dots} />
 				<CanvasControlBar
 					canUndo={canUndo}
 					canRedo={canRedo}
 					onUndo={undo}
 					onRedo={redo}
+					saveStatus={loadErrorMessage ? "error" : autosave.status}
+					saveErrorMessage={loadErrorMessage ?? autosave.errorMessage}
+					lastSavedAt={autosave.lastSavedAt}
 				/>
 				<ShapePanel
 					onShapeDragStart={handleShapeDragStart}
 					onShapeDragMove={handleShapeDragMove}
 					onShapeDragEnd={() => setDragPreview(null)}
 				/>
+				<PresenceAvatars />
 			</ReactFlow>
 			<ShapeDragPreview preview={dragPreview} />
 			<StarterTemplatesModal
@@ -357,6 +485,9 @@ interface CanvasControlBarProps {
 	canRedo: boolean;
 	onUndo: () => void;
 	onRedo: () => void;
+	saveStatus: CanvasSaveStatus;
+	saveErrorMessage: string | null;
+	lastSavedAt: string | null;
 }
 
 function CanvasControlBar({
@@ -364,11 +495,22 @@ function CanvasControlBar({
 	canRedo,
 	onUndo,
 	onRedo,
+	saveStatus,
+	saveErrorMessage,
+	lastSavedAt,
 }: CanvasControlBarProps) {
 	const { zoomIn, zoomOut, fitView } = useReactFlow();
 
 	return (
 		<div className="pointer-events-auto absolute bottom-5 left-5 z-20 flex items-center gap-1.5 rounded-full border border-surface-border bg-surface/90 p-1.5 shadow-2xl shadow-black/40 backdrop-blur">
+			<SaveStatusButton
+				status={saveStatus}
+				errorMessage={saveErrorMessage}
+				lastSavedAt={lastSavedAt}
+			/>
+
+			<div className="h-4 w-px bg-surface-border" />
+
 			<div className="flex items-center gap-1">
 				<Button
 					variant="ghost"
@@ -425,6 +567,68 @@ function CanvasControlBar({
 			</div>
 		</div>
 	);
+}
+
+interface SaveStatusButtonProps {
+	status: CanvasSaveStatus;
+	errorMessage: string | null;
+	lastSavedAt: string | null;
+}
+
+function SaveStatusButton({
+	status,
+	errorMessage,
+	lastSavedAt,
+}: SaveStatusButtonProps) {
+	const statusLabel = getSaveStatusLabel(status);
+	const title =
+		status === "error"
+			? (errorMessage ?? "Autosave failed")
+			: lastSavedAt
+				? `Last saved ${new Date(lastSavedAt).toLocaleTimeString()}`
+				: statusLabel;
+	const Icon =
+		status === "saving"
+			? Loader2
+			: status === "saved"
+				? CheckCircle2
+				: status === "error"
+					? AlertCircle
+					: Save;
+
+	return (
+		<Button
+			type="button"
+			variant="ghost"
+			size="sm"
+			className={cn(
+				"h-8 rounded-full px-3 text-xs",
+				status === "error"
+					? "text-error hover:bg-error/10 hover:text-error"
+					: "text-copy-secondary hover:bg-elevated hover:text-copy-primary",
+			)}
+			title={title}
+			aria-label={title}
+		>
+			<Icon
+				className={cn("h-3.5 w-3.5", status === "saving" && "animate-spin")}
+			/>
+			<span>{statusLabel}</span>
+		</Button>
+	);
+}
+
+function getSaveStatusLabel(status: CanvasSaveStatus): string {
+	switch (status) {
+		case "saving":
+			return "Saving";
+		case "saved":
+			return "Saved";
+		case "error":
+			return "Error";
+		case "idle":
+			return "Autosave";
+	}
 }
 
 function ShapePanel({
@@ -811,6 +1015,34 @@ function CanvasNodeHandles() {
 	);
 }
 
+function CanvasCursor({ connectionId }: CursorsCursorProps) {
+	const info = useOther(connectionId, (other) => other.info);
+
+	if (!info) return null;
+
+	return (
+		<div className="pointer-events-none relative -left-1 -top-1 flex flex-col items-start drop-shadow-md">
+			<svg
+				width="24"
+				height="24"
+				viewBox="0 0 24 24"
+				fill={info.cursorColor || "#000"}
+				stroke="white"
+				strokeWidth="1.5"
+				xmlns="http://www.w3.org/2000/svg"
+			>
+				<path d="M5.65376 21.2087L2.7166 3.63345C2.46328 2.11802 4.09571 1.05061 5.41908 1.86532L21.3654 11.6881C22.6508 12.4799 22.4578 14.398 21.0456 14.8643L15.4215 16.7214L11.5303 21.7513C10.6358 22.9082 8.76106 22.6687 8.23274 21.3283L5.65376 21.2087Z" />
+			</svg>
+			<div
+				className="ml-4 -mt-1 rounded-md px-2 py-1 text-xs font-medium text-white"
+				style={{ backgroundColor: info.cursorColor || "#000" }}
+			>
+				{info.displayName}
+			</div>
+		</div>
+	);
+}
+
 function ShapeDragPreview({
 	preview,
 }: {
@@ -822,8 +1054,8 @@ function ShapeDragPreview({
 		<div
 			className="pointer-events-none fixed z-50 opacity-55"
 			style={{
-				left: preview.x,
-				top: preview.y,
+				left: preview.x - preview.width / 2,
+				top: preview.y - preview.height / 2,
 				width: preview.width,
 				height: preview.height,
 			}}
@@ -911,6 +1143,28 @@ function isShapeDragPayload(value: unknown): value is ShapeDragPayload {
 
 function isPositiveNumber(value: unknown): value is number {
 	return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function parseCanvasLoadResponse(value: unknown): CanvasSnapshot | null {
+	if (!isRecord(value)) return null;
+
+	if (value.canvas === null) return null;
+	if (!isRecord(value.canvas)) return null;
+	if (!Array.isArray(value.canvas.nodes) || !Array.isArray(value.canvas.edges)) {
+		return null;
+	}
+
+	return value.canvas as unknown as CanvasSnapshot;
+}
+
+function getCanvasApiErrorMessage(value: unknown): string | null {
+	if (!isRecord(value) || !isRecord(value.error)) return null;
+
+	return typeof value.error.message === "string" ? value.error.message : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function CanvasLoadingState() {
