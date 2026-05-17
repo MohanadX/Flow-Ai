@@ -5,7 +5,7 @@ change.
 
 ## Current Phase
 
-- Phase 18: Starter Templates (complete)
+- Phase 21: Canvas Autosave (complete)
 
 ## Current Goal
 
@@ -224,6 +224,39 @@ change.
   - Added Liveblocks room deletion when a project is removed so persistent room state does not remain behind after DB cleanup.
   - Added `router.refresh()` alongside `router.push()` in the navigation transitions because Next.js App Router does not automatically refetch parent layout data when navigating to child routes.
   - Investigated updating the project `roomId` on rename, but intentionally kept the Project ID immutable to prevent destroying the associated Liveblocks canvas data.
+
+- 19-presence-avatar-cursor:
+  - Created `components/editor/presence-avatars.tsx` using Liveblocks `useOthers` and Clerk `useUser`.
+  - Added logic to deduplicate presence and filter out the current user's avatar.
+  - Rendered an overlapping stack for up to 5 collaborator avatars with an overflow counter.
+  - Positioned the avatar group in the top-right corner to match the `CanvasControlBar` visual style.
+  - Conditionally rendered the Clerk `UserButton` inside the avatar group with a divider when collaborators are present.
+  - Added `onPointerMove` and `onPointerLeave` to `CollaborativeCanvas` to update and clear `cursor` presence in real-time.
+  - Replaced the default `@liveblocks/react-flow` cursor with a custom `CanvasCursor` component showing a colored pointer and a name badge based on `info.cursorColor` and `info.displayName`.
+  - `npm run build` passes with zero errors.
+- 20-ai-sidebar-shell:
+  - Created `components/editor/ai-sidebar.tsx` as a dedicated controlled AI sidebar component.
+  - Preserved the existing fixed right-side floating placement, mobile backdrop, slide-in transition, and parent-owned open/close state.
+  - Added the `AI Workspace` header with Flow AI subtitle, bot icon, and close action.
+  - Added shadcn `Tabs` for `AI Architect` and `Specs` with AI-accent active styling and muted inactive text.
+  - Built the AI Architect tab with a scrollable chat area, empty state, starter prompt chips, local demo messages, auto-resizing textarea, and Enter-to-send behavior.
+  - Built the Specs tab with a `Generate Spec` action and static demo spec card with a disabled download action.
+  - `npx tsc --noEmit` and `npm run build` pass with zero errors.
+- 21-canvas-autosave:
+  - Installed `@vercel/blob` for Vercel Blob-backed canvas snapshot persistence.
+  - Reused existing `Project.canvasJsonPath` as the Prisma metadata field for saved canvas blob URLs; no schema migration was required.
+  - Added `CanvasSnapshot` and `CanvasSaveStatus` shared types in `types/canvas.ts`.
+  - Created `lib/canvas-service.ts` to validate canvas JSON, upload snapshots to `canvas/{projectId}.json`, store the Blob URL on the project record, and load saved snapshots.
+  - Added `GET` and `PUT /api/projects/[projectId]/canvas` with authenticated project access checks for owners and collaborators.
+  - Created `hooks/use-canvas-autosave.ts` with debounced saves and `idle`, `saving`, `saved`, and `error` status tracking.
+  - Loaded saved canvas state only when the Liveblocks room starts empty; active rooms skip loading so collaboration state is not overwritten.
+  - Added an autosave status control to the canvas toolbar showing saving, saved, idle, or error state.
+  - Fixed Vercel Blob private-store compatibility by saving canvas snapshots with `access: "private"` and loading them server-side through the Blob SDK instead of public `fetch`.
+  - `npx tsc --noEmit` and `npm run build` pass with zero errors.
+- Current canvas issue fixes:
+  - Centered shape drag previews and dropped canvas nodes under the cursor by offsetting by half the shape dimensions.
+  - Configured React Flow to delete selected nodes or edges with `Backspace` or `Delete`, and to use `Shift` for multi-selection.
+  - Removed the duplicate Clerk `UserButton` from the editor navbar because `PresenceAvatars` now owns the account control in active workspaces.
 
 ## In Progress
 

@@ -6,8 +6,8 @@ import { EditorNavbar } from "@/components/editor/editor-navbar";
 import { ProjectSidebar } from "@/components/editor/project-sidebar";
 import { ProjectDialogs } from "@/components/editor/project-dialogs";
 import { ShareDialog } from "@/components/editor/share-dialog";
+import { AiSidebar } from "@/components/editor/ai-sidebar";
 import { useProjectActions } from "@/hooks/use-project-actions";
-import { cn } from "@/lib/utils";
 import type { ProjectLists } from "@/types/project";
 
 export const EditorActionContext = createContext<{ onNewProject: () => void }>({
@@ -86,18 +86,10 @@ export function EditorChrome({
 									onClick={() => setIsAiSidebarOpen(false)}
 								/>
 							)}
-							<div
-								aria-hidden={!isAiSidebarOpen}
-								inert={!isAiSidebarOpen}
-								className={cn(
-									"fixed top-14 bottom-0 right-0 z-40 w-80 shrink-0 transform border-l border-border bg-base transition-all duration-300 ease-in-out flex flex-col items-center justify-center p-4",
-									isAiSidebarOpen
-										? "translate-x-0"
-										: "translate-x-full pointer-events-none",
-								)}
-							>
-								<p className="text-copy-muted text-sm">AI Chat Placeholder</p>
-							</div>
+							<AiSidebar
+								isOpen={isAiSidebarOpen}
+								onClose={() => setIsAiSidebarOpen(false)}
+							/>
 						</>
 					)}
 				</div>

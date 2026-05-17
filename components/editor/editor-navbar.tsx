@@ -1,6 +1,5 @@
 import { PanelLeftClose, PanelLeftOpen, Share2, Sparkles, LayoutTemplate } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { UserButton } from "@clerk/nextjs";
 
 interface EditorNavbarProps {
 	isSidebarOpen: boolean;
@@ -80,9 +79,6 @@ export function EditorNavbar({
 						</Button>
 					</>
 				)}
-				<div className="w-12 flex justify-end">
-					<UserButton />
-				</div>
 			</div>
 		</header>
 	);
