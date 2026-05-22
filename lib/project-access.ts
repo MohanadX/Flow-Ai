@@ -1,8 +1,9 @@
 import "server-only";
 
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import type { Project } from "@/app/generated/prisma/client";
+import { getCachedClerkUser } from "@/lib/clerk-cache";
 
 export interface Identity {
   userId: string;
@@ -13,10 +14,8 @@ export async function getCurrentIdentity(): Promise<Identity | null> {
   const { userId } = await auth();
   if (!userId) return null;
 
-  const user = await currentUser();
-  const email = user?.emailAddresses[0]?.emailAddress ?? null;
-
-  return { userId, email };
+  const cachedUser = await getCachedClerkUser(userId);
+  return { userId, email: cachedUser.email };
 }
 
 export async function checkProjectAccess(

@@ -1,21 +1,26 @@
-import { currentUser, auth } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 
 import { ApiError, handleApiError, readJsonObject } from "@/lib/api-response";
 import { getCursorColorForUser, getLiveblocksClient } from "@/lib/liveblocks";
 import { checkProjectAccess } from "@/lib/project-access";
+import { getCachedClerkUser } from "@/lib/clerk-cache";
 
 export async function POST(request: Request) {
 	try {
-		const { userId } = await auth();
+		// Resolve auth identity and request body concurrently.
+		const [{ userId }, body] = await Promise.all([
+			auth(),
+			readJsonObject(request),
+		]);
 
 		if (!userId) {
 			throw new ApiError(401, "UNAUTHORIZED", "Authentication required.");
 		}
 
-		const body = await readJsonObject(request);
+		// Retrieve cached user profile details to avoid slow Clerk roundtrips.
+		const cachedUser = await getCachedClerkUser(userId);
 		const roomId = normalizeRoomId(body.room);
-		const user = await currentUser();
-		const email = user?.emailAddresses[0]?.emailAddress ?? null;
+		const email = cachedUser.email;
 		const project = await checkProjectAccess(roomId, { userId, email });
 
 		if (!project) {
@@ -35,8 +40,8 @@ export async function POST(request: Request) {
 
 		const session = liveblocks.prepareSession(userId, {
 			userInfo: {
-				displayName: getDisplayName(user, email),
-				avatarUrl: user?.imageUrl ?? "",
+				displayName: cachedUser.displayName,
+				avatarUrl: cachedUser.avatarUrl,
 				cursorColor,
 			},
 		});
@@ -56,15 +61,4 @@ function normalizeRoomId(room: unknown): string {
 	}
 
 	return room.trim();
-}
-
-function getDisplayName(
-	user: Awaited<ReturnType<typeof currentUser>>,
-	email: string | null,
-): string {
-	if (!user) return email ?? "Anonymous";
-
-	const name = [user.firstName, user.lastName].filter(Boolean).join(" ");
-
-	return name || user.username || email || "Anonymous";
 }

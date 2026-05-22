@@ -5,11 +5,11 @@ change.
 
 ## Current Phase
 
-- Phase 21: Canvas Autosave (complete)
+- Phase 26: Design Agent Frontend Wiring
 
 ## Current Goal
 
-- Done. Ready for the next project feature unit.
+- Wire AI sidebar prompt submission to design-agent runs with collaborative realtime status and chat updates.
 
 ## Completed
 
@@ -257,10 +257,101 @@ change.
   - Centered shape drag previews and dropped canvas nodes under the cursor by offsetting by half the shape dimensions.
   - Configured React Flow to delete selected nodes or edges with `Backspace` or `Delete`, and to use `Shift` for multi-selection.
   - Removed the duplicate Clerk `UserButton` from the editor navbar because `PresenceAvatars` now owns the account control in active workspaces.
+  - Fixed React setState cascading render warning in CollaborativeCanvas by moving state updates to the render phase.
+- 22-trigger-dev-setup:
+  - Installed `@trigger.dev/sdk@latest` and `@trigger.dev/build@latest`.
+  - Created `trigger.config.ts` configured with `PrismaExtension` for `mode: "modern"` matching Prisma v7.
+  - Created sample `trigger/example.ts` with an initial hello-world background task.
+  - Added `"trigger": "npx trigger.dev@latest dev"` to `package.json` scripts.
+  - `npx tsc --noEmit` passes with zero errors.
+- 22-design-agent-api:
+  - Added `TaskRun` model to Prisma schema with `runId` (unique), `projectId`, `userId`, `createdAt`, `@@index([runId])`, and `@@index([userId, projectId])`.
+  - Applied migration `20260519143502_add_task_run` and regenerated Prisma client.
+  - Created `trigger/design-agent.ts` exporting `designAgentTask` that accepts `{ prompt, roomId }` and logs the payload (no AI logic yet).
+  - Created `POST /api/ai/design` — authenticates user, validates `prompt`/`projectId`/`roomId`, triggers `design-agent` via `tasks.trigger`, stores `TaskRun`, returns `{ runId }`.
+  - Created `POST /api/ai/design/token` — authenticates user, verifies `TaskRun` ownership, issues a Trigger.dev public token scoped to that run with 1h expiry.
+  - Installed `@trigger.dev/react-hooks`, `@ai-sdk/google`, and `ai` packages.
+  - `npx tsc --noEmit` and `npm run build` pass with zero errors.
+
+- 23-design-agent-logic:
+  - Updated `trigger/design-agent.ts` with `@ai-sdk/google` (`gemini-2.5-flash`) and `zod` for generating architecture nodes and edges from a prompt.
+  - Connected the task to Liveblocks REST API to set AI presence (status and cursor) during execution.
+  - Used JSON Patch to inject generated nodes and edges into the Liveblocks `/flow/nodes` and `/flow/edges` maps.
+  - Updated `components/editor/ai-sidebar.tsx` to handle submitting prompts and fetching Trigger.dev tokens.
+  - Connected `useRealtimeRun` in the sidebar to stream AI task status messages into the chat UI.
+  - Passed `projectId` properly through `EditorChrome` to the sidebar.
+  - Fixed `Missing accessToken in TriggerAuthContext` error by extracting `useRealtimeRun` into a conditionally rendered `RunTracker` component.
+  - Fixed `generateObject` deprecation warning by migrating to `generateText` and parsing the structured JSON output natively.
+  - Refactored `trigger/design-agent.ts` to use `createGoogleGenerativeAI` to successfully consume the custom `GOOGLE_AI_API_KEY`.
+  - Expanded agent capabilities to perform full CRUD operations (add, move, resize, update, delete) on nodes and edges, applying atomic JSON Patch updates directly to the canvas state.
+
+- 24-ai-presence-state:
+  - Created `types/tasks.ts` with `AiStatusPayload` interface and `isAiStatusPayload` validator.
+  - Added `ai-status-feed` `RoomEvent` to `liveblocks.config.ts` (inlined type to satisfy Liveblocks JSON validation).
+  - Updated `trigger/design-agent.ts` to broadcast `ai-status-feed` events via `POST /v2/rooms/{roomId}/events` alongside every `setPresence` call.
+  - Exported `AiStatusContext` and `useAiStatus` hook from `editor-chrome.tsx`; `EditorChrome` owns and provides `sharedAiStatus` + `onAiStatus` state.
+  - Added `useEventListener` inside `BaseCanvas` (inside `RoomProvider`) to bridge feed events to the context's `onAiStatus` callback, validated through `isAiStatusPayload`.
+  - Updated `CanvasCursor` to read `isThinking` from each participant's presence and render a `Loader2` spinner in their name badge when active.
+  - Rewrote `ai-sidebar.tsx` to consume `useAiStatus()` — shows a pulsing dot on the bot icon and a live status banner with spinner when generation is active; disables chat input and send button while locked.
+  - `npx tsc --noEmit` and `npm run build` pass with zero errors.
+- 25-ai-sidebar-feed:
+  - Added Zod-backed `ai-chat` message schemas and validators in `types/tasks.ts` for sender, role, content, and timestamp.
+  - Declared `zod` as a direct dependency because shared client/server validation now imports it directly.
+  - Added typed Liveblocks `FeedMetadata` and `FeedMessageData` entries in `liveblocks.config.ts` while keeping `ai-chat` separate from `ai-status-feed`.
+  - Moved the active project `LiveblocksProvider` and `RoomProvider` into `EditorChrome` so the canvas and AI sidebar share the same authenticated room context.
+  - Updated `CollaborativeCanvas` to rely on the surrounding room provider while preserving its canvas error boundary and `ClientSideSuspense` loading state.
+  - Wired `AiSidebar` to create/reuse the room-scoped `ai-chat` feed, subscribe with `useFeedMessages`, validate messages before rendering, and display sender, timestamp, and content in order.
+  - Changed the existing sidebar input/send button to publish chat messages to `ai-chat` only; it no longer triggers backend AI tasks for this scoped chat feature.
+  - Added small loading, load-error, and send-error states for the chat area.
+  - `npx tsc --noEmit`, `npm run lint`, and `npm run build` pass with zero errors.
+- 26-design-agent-frontend:
+  - Updated `AiSidebar` submit flow to publish user prompts to `ai-chat` first, then call `POST /api/ai/design` with room/project context.
+  - Sidebar now stores `runId` + `publicToken` in local state and initializes Trigger realtime tracking through `useRealtimeRun`.
+  - Added fallback token fetch via `POST /api/ai/design/token` when `publicToken` is not returned by `/api/ai/design`.
+  - Added run lifecycle handling: while run is active, prompt input is disabled and the submit button renders a spinner.
+  - Added completion handling that pushes a final assistant message to `ai-chat` (`completed`, `failed`, or `canceled`) and resets run state.
+  - Added feed-based error handling that writes API/run failures into collaborative `ai-chat` messages.
+  - Moved status strip rendering to directly above the input and scoped visibility to active runs only; status text reads from shared `ai-status-feed`.
+  - Applied spec-specific green accent styling for user chat bubbles, active submit button, and status strip while preserving existing layout/tokens.
+  - Passed `projectId` from `EditorChrome` to `AiSidebar` so submit calls can target the active room.
+  - `npx tsc --noEmit`, `npm run lint`, and `npm run build` pass with zero errors.
+- AI chat feed fix:
+  - Fixed "Feed mutation timeout" error on app launch in `components/editor/ai-sidebar.tsx`.
+  - Root cause: `createFeed` was called immediately in a `useEffect` while the Liveblocks WebSocket was still in the connecting state; mutations time out when issued before the room is `"connected"`.
+  - Fix: imported `useStatus` from `@liveblocks/react`, read connection status in the component, and guarded the `createFeed` call with `if (status !== "connected") return;` so it only fires once the room is fully connected. Added `status` to the effect's dependency array so the effect re-runs when the connection becomes ready.
+  - `npx tsc --noEmit` passes with zero errors.
+- Latency and Chat Error Fixes:
+  - Added `lib/clerk-cache.ts` as a server-only in-memory TTL cache for Clerk user profile data, including in-flight request de-duplication for simultaneous room auth calls.
+  - Updated `app/api/liveblocks-auth/route.ts` to resolve auth and request JSON concurrently, then use `getCachedClerkUser` for Liveblocks user metadata and project access email lookup.
+  - Updated `lib/project-access.ts` to use cached Clerk profile data in `getCurrentIdentity`, reducing repeated Clerk API calls during workspace access checks.
+  - Refactored `components/editor/ai-sidebar.tsx` so `useFeedMessages` only mounts inside a `ChatMessages` child component after the room is connected and the `ai-chat` feed is ready.
+  - Disabled AI chat input until the feed is initialized, preventing writes before the collaborative chat feed is available.
+  - Documented short-lived Clerk profile caching in `context/architecture.md`.
+  - Verified that `npx tsc --noEmit` and `npm run build` pass with zero errors.
+- Clerk profile cache cleanup:
+  - Replaced the remaining `currentUser()` call in `app/editor/layout.tsx` with `getCachedClerkUser(userId)` while keeping the fast `auth()` session read in place.
+  - Extended `getCachedClerkUser` to expose all Clerk email addresses so shared project lookup preserves collaborator matching behavior.
+  - Verified that no `currentUser` references remain in the project.
+  - `npx tsc --noEmit` and `npm run build` pass with zero errors.
+- Design agent authorization hardening:
+  - Updated `POST /api/ai/design` to reject mismatched `projectId` and `roomId` values before starting a Trigger.dev run.
+  - Added a server-side project access check before `tasks.trigger("design-agent", ...)` and before `TaskRun` persistence.
+  - The route now derives the canonical project/room ID from the authorized project record for both the Trigger payload and `prisma.taskRun.create`.
+  - `npx tsc --noEmit` and `npm run build` pass with zero errors.
+- Current issue sweep:
+  - Added a shared Trigger.dev queue for `design-agent` with concurrency limited to 3 runs.
+  - Added a default Trigger.dev machine preset in `trigger.config.ts` using the installed SDK's `machine: "small-1x"` config key.
+  - Replaced raw Liveblocks HTTP writes in `trigger/design-agent.ts` with `retry.fetch`-backed requests that check `response.ok` and throw descriptive errors.
+  - Changed AI JSON parsing and schema validation failures to throw instead of being logged and treated as completed runs.
+  - Added strict Zod validation and sanitization for AI-generated node/edge IDs, labels, colors, shapes, numeric positions, and sizes before building JSON Patch operations.
+  - Added opportunistic pruning and API-shaped error handling to the Clerk profile cache.
+  - Updated `RunTracker` to release the locked AI input when Trigger.dev realtime subscription errors occur.
+  - Skipped the `POST /api/ai/design` authorization finding because it was already fixed in the previous pass and remains valid in current code.
+  - `npx tsc --noEmit` and `npm run build` pass with zero errors; `npm run lint` exits successfully with two unrelated warnings in `scratch/test.ts`.
 
 ## In Progress
 
-- None.
+- Phase 26 manual multi-client run/status verification in shared rooms.
 
 ## Open Questions
 

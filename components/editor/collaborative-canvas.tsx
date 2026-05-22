@@ -11,18 +11,22 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { Cursors, type CursorsCursorProps, useLiveblocksFlow } from "@liveblocks/react-flow";
+import {
+	Cursors,
+	type CursorsCursorProps,
+	useLiveblocksFlow,
+} from "@liveblocks/react-flow";
 import {
 	ClientSideSuspense,
-	LiveblocksProvider,
-	RoomProvider,
 	useCanRedo,
 	useCanUndo,
 	useRedo,
 	useUndo,
 	useUpdateMyPresence,
 	useOther,
+	useEventListener,
 } from "@liveblocks/react/suspense";
+import { isAiStatusPayload } from "@/types/tasks";
 import {
 	Background,
 	BackgroundVariant,
@@ -63,6 +67,7 @@ import { CanvasErrorBoundary } from "@/components/editor/canvas-error-boundary";
 import { PresenceAvatars } from "@/components/editor/presence-avatars";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useAiStatus } from "@/components/editor/editor-chrome";
 import {
 	CANVAS_EDGE_TYPE,
 	CANVAS_NODE_TYPE,
@@ -128,18 +133,11 @@ import type { CanvasTemplate } from "@/components/editor/starter-templates";
 
 export function CollaborativeCanvas({ roomId }: CollaborativeCanvasProps) {
 	return (
-		<LiveblocksProvider authEndpoint="/api/liveblocks-auth">
-			<CanvasErrorBoundary fallback={<CanvasErrorState />}>
-				<RoomProvider
-					id={roomId}
-					initialPresence={{ cursor: null, isThinking: false }}
-				>
-					<ClientSideSuspense fallback={<CanvasLoadingState />}>
-						<BaseCanvas roomId={roomId} />
-					</ClientSideSuspense>
-				</RoomProvider>
-			</CanvasErrorBoundary>
-		</LiveblocksProvider>
+		<CanvasErrorBoundary fallback={<CanvasErrorState />}>
+			<ClientSideSuspense fallback={<CanvasLoadingState />}>
+				<BaseCanvas roomId={roomId} />
+			</ClientSideSuspense>
+		</CanvasErrorBoundary>
 	);
 }
 
@@ -148,6 +146,7 @@ interface BaseCanvasProps {
 }
 
 function BaseCanvas({ roomId }: BaseCanvasProps) {
+	const { onAiStatus } = useAiStatus();
 	const reactFlowInstanceRef = useRef<ReactFlowInstance<
 		CanvasNode,
 		CanvasEdge
@@ -161,6 +160,12 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 	const [isCanvasLoadChecked, setIsCanvasLoadChecked] = useState(false);
 	const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
 	const updateMyPresence = useUpdateMyPresence();
+	// Bridge ai-status-feed events out of the RoomProvider to the AiStatusContext.
+	useEventListener(({ event }) => {
+		if (event.type !== "ai-status-feed") return;
+		if (!isAiStatusPayload(event.payload)) return;
+		onAiStatus(event.payload.text);
+	});
 
 	const nodeTypes = useMemo(
 		() =>
@@ -208,6 +213,10 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 		enabled: isCanvasLoadChecked,
 	});
 
+	if (!isCanvasLoadChecked && (nodes.length > 0 || edges.length > 0)) {
+		setIsCanvasLoadChecked(true);
+	}
+
 	useEffect(() => {
 		latestCanvasCountRef.current = {
 			nodes: nodes.length,
@@ -217,11 +226,6 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 
 	useEffect(() => {
 		if (isCanvasLoadChecked) return;
-
-		if (nodes.length > 0 || edges.length > 0) {
-			setIsCanvasLoadChecked(true);
-			return;
-		}
 
 		const controller = new AbortController();
 
@@ -241,20 +245,22 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 				const snapshot = parseCanvasLoadResponse(body);
 				const latestCount = latestCanvasCountRef.current;
 
-				if (
-					snapshot &&
-					latestCount.nodes === 0 &&
-					latestCount.edges === 0
-				) {
+				if (snapshot && latestCount.nodes === 0 && latestCount.edges === 0) {
 					if (snapshot.nodes.length > 0) {
 						onNodesChange(
-							snapshot.nodes.map((node) => ({ type: "add" as const, item: node })),
+							snapshot.nodes.map((node) => ({
+								type: "add" as const,
+								item: node,
+							})),
 						);
 					}
 
 					if (snapshot.edges.length > 0) {
 						onEdgesChange(
-							snapshot.edges.map((edge) => ({ type: "add" as const, item: edge })),
+							snapshot.edges.map((edge) => ({
+								type: "add" as const,
+								item: edge,
+							})),
 						);
 					}
 
@@ -265,6 +271,7 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 			} catch (error) {
 				if (controller.signal.aborted) return;
 
+				console.error(error);
 				setLoadErrorMessage(
 					error instanceof Error
 						? error.message
@@ -1017,6 +1024,10 @@ function CanvasNodeHandles() {
 
 function CanvasCursor({ connectionId }: CursorsCursorProps) {
 	const info = useOther(connectionId, (other) => other.info);
+	const isThinking = useOther(
+		connectionId,
+		(other) => other.presence.isThinking,
+	);
 
 	if (!info) return null;
 
@@ -1034,9 +1045,12 @@ function CanvasCursor({ connectionId }: CursorsCursorProps) {
 				<path d="M5.65376 21.2087L2.7166 3.63345C2.46328 2.11802 4.09571 1.05061 5.41908 1.86532L21.3654 11.6881C22.6508 12.4799 22.4578 14.398 21.0456 14.8643L15.4215 16.7214L11.5303 21.7513C10.6358 22.9082 8.76106 22.6687 8.23274 21.3283L5.65376 21.2087Z" />
 			</svg>
 			<div
-				className="ml-4 -mt-1 rounded-md px-2 py-1 text-xs font-medium text-white"
+				className="ml-4 -mt-1 flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-white"
 				style={{ backgroundColor: info.cursorColor || "#000" }}
 			>
+				{isThinking && (
+					<Loader2 className="h-2.5 w-2.5 animate-spin opacity-80" />
+				)}
 				{info.displayName}
 			</div>
 		</div>
@@ -1150,7 +1164,10 @@ function parseCanvasLoadResponse(value: unknown): CanvasSnapshot | null {
 
 	if (value.canvas === null) return null;
 	if (!isRecord(value.canvas)) return null;
-	if (!Array.isArray(value.canvas.nodes) || !Array.isArray(value.canvas.edges)) {
+	if (
+		!Array.isArray(value.canvas.nodes) ||
+		!Array.isArray(value.canvas.edges)
+	) {
 		return null;
 	}
 

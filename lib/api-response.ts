@@ -72,6 +72,7 @@ export async function readJsonObject(
 
 export function handleApiError(error: unknown): Response {
 	if (error instanceof ApiError) {
+		console.error(error);
 		return jsonError(error.status, error.code, error.message);
 	}
 

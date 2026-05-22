@@ -1,7 +1,8 @@
 "use client";
 
-import { ReactNode, useMemo, useState, createContext } from "react";
+import { ReactNode, useMemo, useState, createContext, useCallback, useContext } from "react";
 import { useParams } from "next/navigation";
+import { LiveblocksProvider, RoomProvider } from "@liveblocks/react";
 import { EditorNavbar } from "@/components/editor/editor-navbar";
 import { ProjectSidebar } from "@/components/editor/project-sidebar";
 import { ProjectDialogs } from "@/components/editor/project-dialogs";
@@ -13,6 +14,28 @@ import type { ProjectLists } from "@/types/project";
 export const EditorActionContext = createContext<{ onNewProject: () => void }>({
 	onNewProject: () => {},
 });
+
+/**
+ * Carries the shared AI generation status from inside the Liveblocks RoomProvider
+ * (CollaborativeCanvas) up to siblings like AiSidebar that live outside it.
+ *
+ * - `sharedAiStatus` — current status string, or `undefined` when idle.
+ * - `onAiStatus`     — called by CollaborativeCanvas whenever the feed fires.
+ */
+export interface AiStatusContextValue {
+	sharedAiStatus: string | undefined;
+	onAiStatus: (text: string | undefined) => void;
+}
+
+export const AiStatusContext = createContext<AiStatusContextValue>({
+	sharedAiStatus: undefined,
+	onAiStatus: () => {},
+});
+
+/** Convenience hook for consuming the AI status context. */
+export function useAiStatus() {
+	return useContext(AiStatusContext);
+}
 
 export function EditorChrome({
 	children,
@@ -32,6 +55,17 @@ export function EditorChrome({
 	const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 	const [isAiSidebarOpen, setIsAiSidebarOpen] = useState(false);
 	const [isShareOpen, setIsShareOpen] = useState(false);
+	/** Latest AI status text from the ai-status-feed. Undefined = no active generation. */
+	const [sharedAiStatus, setSharedAiStatus] = useState<string | undefined>();
+
+	const onAiStatus = useCallback((text: string | undefined) => {
+		setSharedAiStatus(text);
+	}, []);
+
+	const aiStatusValue = useMemo<AiStatusContextValue>(
+		() => ({ sharedAiStatus, onAiStatus }),
+		[sharedAiStatus, onAiStatus],
+	);
 
 	const activeProject = useMemo(() => {
 		if (!activeProjectId) return null;
@@ -40,60 +74,80 @@ export function EditorChrome({
 		);
 	}, [activeProjectId, ownedProjects, sharedProjects]);
 
+	const workspaceContent = (
+		<>
+			<main className="flex-1 justify-center flex overflow-hidden relative">
+				{children}
+			</main>
+			{activeProject && (
+				<>
+					{isAiSidebarOpen && (
+						<div
+							className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden"
+							onClick={() => setIsAiSidebarOpen(false)}
+						/>
+					)}
+					<AiSidebar
+						isOpen={isAiSidebarOpen}
+						onClose={() => setIsAiSidebarOpen(false)}
+						projectId={activeProject.id}
+					/>
+				</>
+			)}
+		</>
+	);
+
 	return (
 		<EditorActionContext.Provider
 			value={{ onNewProject: projectActions.openCreate }}
 		>
-			<div className="flex flex-col h-screen overflow-hidden bg-base relative">
-				<EditorNavbar
-					isSidebarOpen={isSidebarOpen}
-					toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-					projectName={activeProject?.name}
-					isAiSidebarOpen={isAiSidebarOpen}
-					toggleAiSidebar={() => setIsAiSidebarOpen(!isAiSidebarOpen)}
-					onShare={activeProject ? () => setIsShareOpen(true) : undefined}
-				/>
-				<div className="flex flex-1 overflow-hidden relative">
-					<ProjectSidebar
-						isOpen={isSidebarOpen}
-						onClose={() => setIsSidebarOpen(false)}
-						ownedProjects={projectActions.ownedProjects}
-						sharedProjects={projectActions.sharedProjects}
-						activeProjectId={activeProjectId}
-						onNewProject={projectActions.openCreate}
-						onOpenProject={projectActions.openProject}
-						onRename={projectActions.openRename}
-						onDelete={projectActions.openDelete}
+			<AiStatusContext.Provider value={aiStatusValue}>
+				<div className="flex flex-col h-screen overflow-hidden bg-base relative">
+					<EditorNavbar
+						isSidebarOpen={isSidebarOpen}
+						toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+						projectName={activeProject?.name}
+						isAiSidebarOpen={isAiSidebarOpen}
+						toggleAiSidebar={() => setIsAiSidebarOpen(!isAiSidebarOpen)}
+						onShare={activeProject ? () => setIsShareOpen(true) : undefined}
 					/>
-					<ProjectDialogs {...projectActions} />
-					{activeProject && (
-						<ShareDialog
-							open={isShareOpen}
-							onOpenChange={setIsShareOpen}
-							projectId={activeProject.id}
-							projectName={activeProject.name}
-							isOwner={activeProject.isOwner}
+					<div className="flex flex-1 overflow-hidden relative">
+						<ProjectSidebar
+							isOpen={isSidebarOpen}
+							onClose={() => setIsSidebarOpen(false)}
+							ownedProjects={projectActions.ownedProjects}
+							sharedProjects={projectActions.sharedProjects}
+							activeProjectId={activeProjectId}
+							onNewProject={projectActions.openCreate}
+							onOpenProject={projectActions.openProject}
+							onRename={projectActions.openRename}
+							onDelete={projectActions.openDelete}
 						/>
-					)}
-					<main className="flex-1 justify-center flex overflow-hidden relative">
-						{children}
-					</main>
-					{activeProjectId && (
-						<>
-							{isAiSidebarOpen && (
-								<div
-									className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden"
-									onClick={() => setIsAiSidebarOpen(false)}
-								/>
-							)}
-							<AiSidebar
-								isOpen={isAiSidebarOpen}
-								onClose={() => setIsAiSidebarOpen(false)}
+						<ProjectDialogs {...projectActions} />
+						{activeProject && (
+							<ShareDialog
+								open={isShareOpen}
+								onOpenChange={setIsShareOpen}
+								projectId={activeProject.id}
+								projectName={activeProject.name}
+								isOwner={activeProject.isOwner}
 							/>
-						</>
-					)}
+						)}
+						{activeProject ? (
+							<LiveblocksProvider authEndpoint="/api/liveblocks-auth">
+								<RoomProvider
+									id={activeProject.id}
+									initialPresence={{ cursor: null, isThinking: false }}
+								>
+									{workspaceContent}
+								</RoomProvider>
+							</LiveblocksProvider>
+						) : (
+							workspaceContent
+						)}
+					</div>
 				</div>
-			</div>
+			</AiStatusContext.Provider>
 		</EditorActionContext.Provider>
 	);
 }

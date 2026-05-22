@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
 				protocol: "https",
 				hostname: "img.clerk.com",
 			},
+			{
+				protocol: "https",
+				hostname: "api.dicebear.com",
+			},
 		],
 	},
 };
