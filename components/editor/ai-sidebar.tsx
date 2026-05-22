@@ -573,10 +573,18 @@ function RunTracker({
 	publicToken: string;
 	onFinished: (status: "COMPLETED" | "FAILED" | "CANCELED") => void;
 }) {
-	const { run } = useRealtimeRun(runId, { accessToken: publicToken });
+	const { run, error } = useRealtimeRun(runId, { accessToken: publicToken });
 	const handledStatusRef = useRef<string | null>(null);
 
 	useEffect(() => {
+		if (error) {
+			if (handledStatusRef.current === "FAILED") return;
+			console.error("Failed to subscribe to Trigger.dev run", error);
+			handledStatusRef.current = "FAILED";
+			onFinished("FAILED");
+			return;
+		}
+
 		if (!run?.status) return;
 		if (
 			run.status !== "COMPLETED" &&
@@ -589,7 +597,7 @@ function RunTracker({
 
 		handledStatusRef.current = run.status;
 		onFinished(run.status);
-	}, [onFinished, run?.status]);
+	}, [error, onFinished, run?.status]);
 
 	return null;
 }

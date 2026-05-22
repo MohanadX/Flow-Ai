@@ -333,6 +333,21 @@ change.
   - Extended `getCachedClerkUser` to expose all Clerk email addresses so shared project lookup preserves collaborator matching behavior.
   - Verified that no `currentUser` references remain in the project.
   - `npx tsc --noEmit` and `npm run build` pass with zero errors.
+- Design agent authorization hardening:
+  - Updated `POST /api/ai/design` to reject mismatched `projectId` and `roomId` values before starting a Trigger.dev run.
+  - Added a server-side project access check before `tasks.trigger("design-agent", ...)` and before `TaskRun` persistence.
+  - The route now derives the canonical project/room ID from the authorized project record for both the Trigger payload and `prisma.taskRun.create`.
+  - `npx tsc --noEmit` and `npm run build` pass with zero errors.
+- Current issue sweep:
+  - Added a shared Trigger.dev queue for `design-agent` with concurrency limited to 3 runs.
+  - Added a default Trigger.dev machine preset in `trigger.config.ts` using the installed SDK's `machine: "small-1x"` config key.
+  - Replaced raw Liveblocks HTTP writes in `trigger/design-agent.ts` with `retry.fetch`-backed requests that check `response.ok` and throw descriptive errors.
+  - Changed AI JSON parsing and schema validation failures to throw instead of being logged and treated as completed runs.
+  - Added strict Zod validation and sanitization for AI-generated node/edge IDs, labels, colors, shapes, numeric positions, and sizes before building JSON Patch operations.
+  - Added opportunistic pruning and API-shaped error handling to the Clerk profile cache.
+  - Updated `RunTracker` to release the locked AI input when Trigger.dev realtime subscription errors occur.
+  - Skipped the `POST /api/ai/design` authorization finding because it was already fixed in the previous pass and remains valid in current code.
+  - `npx tsc --noEmit` and `npm run build` pass with zero errors; `npm run lint` exits successfully with two unrelated warnings in `scratch/test.ts`.
 
 ## In Progress
 
