@@ -52,6 +52,7 @@
 - Only authenticated users can access protected routes.
 - Only the owner or a collaborator can mutate project resources.
 - Liveblocks room tokens are issued only after verifying project membership.
+- Clerk user profile lookups used by access checks and Liveblocks session metadata may be served through a short-lived in-memory TTL cache to reduce repeated Clerk API round trips during workspace connection bursts.
 
 ## Starter System Designs
 

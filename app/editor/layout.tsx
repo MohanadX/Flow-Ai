@@ -1,6 +1,7 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { EditorChrome } from "@/components/editor/editor-chrome";
+import { getCachedClerkUser } from "@/lib/clerk-cache";
 import { listProjectGroups } from "@/lib/project-service";
 
 export default async function EditorLayout({
@@ -14,11 +15,8 @@ export default async function EditorLayout({
 		redirect("/sign-in");
 	}
 
-	const user = await currentUser();
-	const projectLists = await listProjectGroups(
-		userId,
-		user?.emailAddresses.map((email) => email.emailAddress) ?? [],
-	);
+	const user = await getCachedClerkUser(userId);
+	const projectLists = await listProjectGroups(userId, user.emailAddresses);
 
 	return <EditorChrome {...projectLists}>{children}</EditorChrome>;
 }
