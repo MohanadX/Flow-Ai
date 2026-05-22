@@ -156,9 +156,6 @@ export const designAgentTask = task({
 		}
 		const liveblocksSecret = secret;
 
-		console.log(
-			`[design-agent] starting for room ${roomId} with prompt: "${prompt}"`,
-		);
 		metadata.set("statusMessage", "Starting AI Architect...");
 
 		async function setPresence(
@@ -364,7 +361,9 @@ function parseGeneratedArchitecture(rawText: string): GeneratedArchitecture {
 
 	const result = generatedArchitectureSchema.safeParse(parsed);
 	if (!result.success) {
-		throw new Error(`AI architecture output failed validation: ${result.error.message}`);
+		throw new Error(
+			`AI architecture output failed validation: ${result.error.message}`,
+		);
 	}
 
 	return {
@@ -377,7 +376,9 @@ function parseGeneratedArchitecture(rawText: string): GeneratedArchitecture {
 	};
 }
 
-function sanitizeAddedNode(node: z.infer<typeof addedNodeSchema>): SanitizedAddedNode {
+function sanitizeAddedNode(
+	node: z.infer<typeof addedNodeSchema>,
+): SanitizedAddedNode {
 	const shape = node.shape;
 	const defaultSize = SHAPE_DEFAULT_SIZES[shape];
 
@@ -418,7 +419,9 @@ function sanitizeUpdatedNode(
 	};
 }
 
-function sanitizeAddedEdge(edge: z.infer<typeof addedEdgeSchema>): SanitizedAddedEdge {
+function sanitizeAddedEdge(
+	edge: z.infer<typeof addedEdgeSchema>,
+): SanitizedAddedEdge {
 	return {
 		id: edge.id,
 		source: edge.source,
@@ -465,11 +468,23 @@ function buildPatchOperations(
 	for (const node of generatedArchitecture.updatedNodes) {
 		const { id, x, y, width, height, label, shape, color, textColor } = node;
 		if (x !== undefined)
-			ops.push({ op: "replace", path: `/flow/nodes/${id}/position/x`, value: x });
+			ops.push({
+				op: "replace",
+				path: `/flow/nodes/${id}/position/x`,
+				value: x,
+			});
 		if (y !== undefined)
-			ops.push({ op: "replace", path: `/flow/nodes/${id}/position/y`, value: y });
+			ops.push({
+				op: "replace",
+				path: `/flow/nodes/${id}/position/y`,
+				value: y,
+			});
 		if (width !== undefined) {
-			ops.push({ op: "replace", path: `/flow/nodes/${id}/width`, value: width });
+			ops.push({
+				op: "replace",
+				path: `/flow/nodes/${id}/width`,
+				value: width,
+			});
 			ops.push({
 				op: "replace",
 				path: `/flow/nodes/${id}/style/width`,
@@ -477,7 +492,11 @@ function buildPatchOperations(
 			});
 		}
 		if (height !== undefined) {
-			ops.push({ op: "replace", path: `/flow/nodes/${id}/height`, value: height });
+			ops.push({
+				op: "replace",
+				path: `/flow/nodes/${id}/height`,
+				value: height,
+			});
 			ops.push({
 				op: "replace",
 				path: `/flow/nodes/${id}/style/height`,
@@ -554,12 +573,17 @@ function liveblocksHeaders(secret: string): HeadersInit {
 	};
 }
 
-async function liveblocksRequest(url: string, init: RequestInit): Promise<Response> {
+async function liveblocksRequest(
+	url: string,
+	init: RequestInit,
+): Promise<Response> {
 	const response = await retry.fetch(url, init);
 
 	if (!response.ok) {
 		const body = await response.text();
-		throw new Error(`Liveblocks request failed with ${response.status}: ${body}`);
+		throw new Error(
+			`Liveblocks request failed with ${response.status}: ${body}`,
+		);
 	}
 
 	return response;
