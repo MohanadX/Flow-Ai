@@ -132,7 +132,7 @@ import { lightpanda } from "@trigger.dev/build/extensions/lightpanda";
 
 extensions: [
   lightpanda({
-    version: "latest", // or "nightly"
+    version: "0.17.0", // pin an explicit tested version
     disableTelemetry: false,
   }),
 ];
