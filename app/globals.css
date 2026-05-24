@@ -104,6 +104,9 @@
 	--state-error: #ff4d4f;
 	--state-success: #34d399;
 	--state-warning: #fbbf24;
+	--scrollbar-track: rgba(255, 255, 255, 0.06);
+	--scrollbar-thumb: rgba(0, 200, 212, 0.48);
+	--scrollbar-thumb-hover: rgba(0, 200, 212, 0.72);
 
 	/* ── shadcn semantic tokens mapped to dark palette ── */
 	--background: #080809;
@@ -173,14 +176,40 @@
 	--sidebar-accent-foreground: #f0f0f4;
 	--sidebar-border: #2a2a30;
 	--sidebar-ring: #00c8d4;
+	--scrollbar-track: rgba(255, 255, 255, 0.06);
+	--scrollbar-thumb: rgba(0, 200, 212, 0.48);
+	--scrollbar-thumb-hover: rgba(0, 200, 212, 0.72);
 }
 
 @layer base {
 	* {
 		@apply border-border outline-ring/50;
+		scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+		scrollbar-width: thin;
 	}
+
+	*::-webkit-scrollbar {
+		width: 8px;
+		height: 8px;
+	}
+
+	*::-webkit-scrollbar-track {
+		background: var(--scrollbar-track);
+	}
+
+	*::-webkit-scrollbar-thumb {
+		background-color: var(--scrollbar-thumb);
+		border-radius: 9999px;
+		border: 2px solid transparent;
+		background-clip: content-box;
+	}
+
+	*::-webkit-scrollbar-thumb:hover {
+		background-color: var(--scrollbar-thumb-hover);
+	}
+
 	body {
-		@apply bg-background text-foreground;
+		@apply bg-background text-foreground box-border;
 	}
 	html {
 		@apply font-sans;

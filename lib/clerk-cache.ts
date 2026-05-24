@@ -24,10 +24,12 @@ interface PendingClerkUserRequest {
 const clerkUserCache = new Map<string, ClerkUserCacheEntry>();
 const pendingClerkUserRequests = new Map<string, PendingClerkUserRequest>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache TTL
-const CACHE_PRUNE_INTERVAL_MS = 60 * 1000;
+const CACHE_PRUNE_INTERVAL_MS = 5 * 60 * 1000;
 let lastPrunedAt = 0;
 
-export async function getCachedClerkUser(userId: string): Promise<CachedClerkUser> {
+export async function getCachedClerkUser(
+	userId: string,
+): Promise<CachedClerkUser> {
 	const now = Date.now();
 	pruneExpiredClerkCache(now);
 
@@ -60,7 +62,9 @@ async function fetchAndCacheClerkUser(
 		const client = await clerkClient();
 		const user = await client.users.getUser(userId);
 
-		const emailAddresses = user.emailAddresses.map((email) => email.emailAddress);
+		const emailAddresses = user.emailAddresses.map(
+			(email) => email.emailAddress,
+		);
 		const email = emailAddresses[0] ?? null;
 		const name = [user.firstName, user.lastName].filter(Boolean).join(" ");
 		const displayName = name || user.username || email || "Anonymous";
@@ -94,7 +98,7 @@ async function fetchAndCacheClerkUser(
 }
 
 function pruneExpiredClerkCache(now: number): void {
-	if (now - lastPrunedAt < CACHE_PRUNE_INTERVAL_MS) return;
+	if (now - lastPrunedAt < CACHE_PRUNE_INTERVAL_MS) return; // explain this line
 
 	lastPrunedAt = now;
 

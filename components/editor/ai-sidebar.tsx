@@ -3,6 +3,7 @@
 import {
 	FormEvent,
 	KeyboardEvent,
+	type ReactNode,
 	useEffect,
 	useMemo,
 	useRef,
@@ -15,10 +16,21 @@ import {
 	useFeedMessages,
 	useSelf,
 	useStatus,
+	useStorage,
 } from "@liveblocks/react";
 import { Bot, Download, FileText, Send, X, Loader2, Zap } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRealtimeRun } from "@trigger.dev/react-hooks";
 import { Button } from "@/components/ui/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -28,6 +40,8 @@ import {
 	type AiChatMessageData,
 	isAiChatMessageData,
 } from "@/types/tasks";
+import type { CanvasEdge, CanvasNode } from "@/types/canvas";
+import type { GenerateSpecRequest } from "@/types/spec-generation";
 
 interface AiSidebarProps {
 	isOpen: boolean;
@@ -45,6 +59,12 @@ interface ChatMessageView {
 	timestamp: string;
 }
 
+interface ProjectSpecListItem {
+	id: string;
+	projectId: string;
+	createdAt: string;
+}
+
 const starterPrompts = [
 	"Design an e-commerce backend",
 	"Create a chat app architecture",
@@ -57,10 +77,16 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 	const [sendError, setSendError] = useState<string | undefined>();
 	const [runId, setRunId] = useState<string | undefined>();
 	const [publicToken, setPublicToken] = useState<string | undefined>();
+	const [specRunId, setSpecRunId] = useState<string | undefined>();
+	const [specPublicToken, setSpecPublicToken] = useState<string | undefined>();
+	const [selectedSpec, setSelectedSpec] = useState<
+		ProjectSpecListItem | undefined
+	>();
 	// True once createFeed has resolved (success or already-exists), meaning the
 	// feed exists and useFeedMessages errors should be treated as real failures.
 	const [isFeedReady, setIsFeedReady] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const queryClient = useQueryClient();
 	const self = useSelf();
 	const status = useStatus();
 	const createFeed = useCreateFeed();
@@ -69,6 +95,30 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 	// Shared AI activity state from the Liveblocks ai-status-feed (visible to all participants).
 	const { sharedAiStatus } = useAiStatus();
 	const isRunActive = !!runId;
+	const isSpecRunActive = !!specRunId;
+	const specsQuery = useQuery({
+		queryKey: specKeys.list(projectId),
+		queryFn: () => fetchProjectSpecs(projectId),
+		enabled: isOpen,
+	});
+	const selectedSpecDownloadUrl = selectedSpec
+		? getSpecDownloadUrl(projectId, selectedSpec.id)
+		: undefined;
+	const specPreviewQuery = useQuery({
+		queryKey: selectedSpec
+			? specKeys.preview(projectId, selectedSpec.id)
+			: specKeys.preview(projectId, ""),
+		queryFn: () => {
+			if (!selectedSpec) {
+				throw new Error("No spec selected.");
+			}
+
+			return fetchSpecMarkdown(projectId, selectedSpec.id);
+		},
+		enabled: !!selectedSpec,
+		gcTime: 0,
+		staleTime: 0,
+	});
 
 	useEffect(() => {
 		// Only attempt feed creation once the room WebSocket is fully connected.
@@ -242,6 +292,47 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 		setPublicToken(undefined);
 	}
 
+	async function handleSpecRunFinished(
+		status: "COMPLETED" | "FAILED" | "CANCELED",
+	) {
+		const summary =
+			status === "COMPLETED"
+				? "Spec generation completed."
+				: status === "FAILED"
+					? "Spec generation failed."
+					: "Spec generation was canceled.";
+
+		await pushChatMessage({
+			sender: {
+				id: "flow-ai",
+				name: "Flow AI",
+			},
+			role: "assistant",
+			content: summary,
+			timestamp: new Date().toISOString(),
+		});
+
+		if (status === "COMPLETED") {
+			await queryClient.invalidateQueries({
+				queryKey: specKeys.list(projectId),
+			});
+		}
+
+		setSpecRunId(undefined);
+		setSpecPublicToken(undefined);
+	}
+
+	function handlePreviewOpenChange(isPreviewOpen: boolean) {
+		if (isPreviewOpen) return;
+
+		if (selectedSpec) {
+			queryClient.removeQueries({
+				queryKey: specKeys.preview(projectId, selectedSpec.id),
+			});
+		}
+		setSelectedSpec(undefined);
+	}
+
 	return (
 		<div
 			aria-hidden={!isOpen}
@@ -256,6 +347,13 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 					runId={runId}
 					publicToken={publicToken}
 					onFinished={handleRunFinished}
+				/>
+			) : null}
+			{specRunId && specPublicToken ? (
+				<RunTracker
+					runId={specRunId}
+					publicToken={specPublicToken}
+					onFinished={handleSpecRunFinished}
 				/>
 			) : null}
 
@@ -383,45 +481,153 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 
 				<TabsContent
 					value="specs"
-					className="m-0 flex min-h-0 flex-col gap-4 p-4 data-[state=inactive]:hidden"
+					className="m-0 flex min-h-0 flex-col gap-3 p-4 data-[state=inactive]:hidden"
 				>
-					<Button
-						type="button"
-						className="w-full bg-ai text-white hover:bg-ai/90"
-					>
-						<FileText className="mr-2 h-4 w-4" />
-						Generate Spec
-					</Button>
+					{isFeedReady ? (
+						<SpecGenerationButton
+							projectId={projectId}
+							isSpecRunActive={isSpecRunActive}
+							onRunStarted={(nextRunId, nextPublicToken) => {
+								setSpecRunId(nextRunId);
+								setSpecPublicToken(nextPublicToken);
+							}}
+							onError={async (message) => {
+								setSendError(message);
+								await pushChatMessage({
+									sender: {
+										id: "flow-ai",
+										name: "Flow AI",
+									},
+									role: "assistant",
+									content: message,
+									timestamp: new Date().toISOString(),
+								});
+							}}
+						/>
+					) : (
+						<Button
+							type="button"
+							className="w-full bg-ai text-white hover:bg-ai/90"
+							disabled
+						>
+							<FileText className="mr-2 h-4 w-4" />
+							Generate Spec
+						</Button>
+					)}
 
-					<div className="rounded-2xl border border-surface-border bg-elevated p-4">
-						<div className="flex items-start gap-3">
-							<div className="flex size-9 items-center justify-center rounded-xl bg-subtle text-ai-text">
-								<FileText className="h-5 w-5" />
+					<ScrollArea className="min-h-0 flex-1 pr-3">
+						{specsQuery.isLoading ? (
+							<div className="flex min-h-32 items-center justify-center gap-2 text-xs text-copy-muted">
+								<Loader2 className="h-3.5 w-3.5 animate-spin" />
+								Loading specs...
 							</div>
-							<div className="min-w-0 flex-1 space-y-1">
-								<h3 className="truncate text-sm font-semibold text-copy-primary">
-									System Design Spec
+						) : specsQuery.isError ? (
+							<div className="rounded-2xl border border-surface-border bg-elevated p-4 text-xs text-error">
+								Specs could not be loaded.
+							</div>
+						) : specsQuery.data?.length ? (
+							<div className="flex flex-col w-[81%] gap-2">
+								{specsQuery.data.map((spec) => (
+									<div
+										key={spec.id}
+										role="button"
+										tabIndex={0}
+										onClick={() => setSelectedSpec(spec)}
+										className="group flex w-full items-center gap-3 rounded-2xl border border-surface-border bg-elevated p-3 text-left transition hover:border-ai/40 hover:bg-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ai/50"
+									>
+										<div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-subtle text-ai-text">
+											<FileText className="h-4 w-4" />
+										</div>
+										<div className="min-w-0 flex-1">
+											<p className="truncate text-sm font-medium text-copy-primary">
+												{formatSpecFilename(spec)}
+											</p>
+											<p className="truncate text-xs text-copy-muted">
+												{formatSpecCreatedAt(spec.createdAt)}
+											</p>
+										</div>
+										<Button
+											type="button"
+											variant="ghost"
+											size="icon-sm"
+											aria-label={`Download ${formatSpecFilename(spec)}`}
+											onClick={(event) => {
+												event.stopPropagation();
+												window.location.assign(
+													getSpecDownloadUrl(projectId, spec.id),
+												);
+											}}
+											className="shrink-0 opacity-80 group-hover:opacity-100"
+										>
+											<Download className="h-4 w-4" />
+										</Button>
+									</div>
+								))}
+							</div>
+						) : (
+							<div className="rounded-2xl border border-surface-border bg-elevated p-4 text-center">
+								<div className="mx-auto mb-3 flex size-10 items-center justify-center rounded-xl bg-subtle text-ai-text">
+									<FileText className="h-5 w-5" />
+								</div>
+								<h3 className="text-sm font-semibold text-copy-primary">
+									No specs yet
 								</h3>
-								<p className="line-clamp-3 text-xs leading-5 text-copy-muted">
-									Static preview of the future generated Markdown spec with
-									architecture overview, service responsibilities, and data flow
-									notes.
+								<p className="mt-1 text-xs leading-5 text-copy-muted">
+									Generated specs will appear here for preview and download.
 								</p>
 							</div>
-						</div>
+						)}
+					</ScrollArea>
+				</TabsContent>
+			</Tabs>
+
+			<Dialog open={!!selectedSpec} onOpenChange={handlePreviewOpenChange}>
+				<DialogContent className="max-h-[min(720px,calc(100vh-2rem))] gap-0 rounded-3xl border border-surface-border bg-elevated p-0 sm:max-w-3xl">
+					<DialogHeader className="border-b border-surface-border px-5 py-4 pr-12">
+						<DialogTitle className="truncate text-copy-primary">
+							{selectedSpec ? formatSpecFilename(selectedSpec) : "Spec Preview"}
+						</DialogTitle>
+						<DialogDescription className="text-copy-muted">
+							{selectedSpec
+								? formatSpecCreatedAt(selectedSpec.createdAt)
+								: "Generated Markdown spec"}
+						</DialogDescription>
+					</DialogHeader>
+
+					<ScrollArea className="min-h-0 max-h-[calc(100vh-14rem)] px-5 py-4">
+						{specPreviewQuery.isLoading ? (
+							<div className="flex min-h-72 items-center justify-center gap-2 text-sm text-copy-muted">
+								<Loader2 className="h-4 w-4 animate-spin" />
+								Loading preview...
+							</div>
+						) : specPreviewQuery.isError ? (
+							<div className="flex min-h-72 items-center justify-center text-center text-sm text-error">
+								Spec preview could not be loaded.
+							</div>
+						) : (
+							<MarkdownPreview content={specPreviewQuery.data ?? ""} />
+						)}
+					</ScrollArea>
+
+					<DialogFooter className="rounded-b-3xl border-surface-border bg-subtle/50 px-5 py-4">
 						<Button
 							type="button"
 							variant="outline"
-							size="sm"
-							disabled
-							className="mt-4 w-full"
+							onClick={() => setSelectedSpec(undefined)}
 						>
-							<Download className="mr-2 h-4 w-4" />
-							Download
+							Close
 						</Button>
-					</div>
-				</TabsContent>
-			</Tabs>
+						{selectedSpecDownloadUrl ? (
+							<Button asChild className="bg-ai text-white hover:bg-ai/90">
+								<a href={selectedSpecDownloadUrl}>
+									<Download className="mr-2 h-4 w-4" />
+									Download
+								</a>
+							</Button>
+						) : null}
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 
@@ -564,6 +770,132 @@ function ChatMessages({
 	);
 }
 
+function SpecGenerationButton({
+	projectId,
+	isSpecRunActive,
+	onRunStarted,
+	onError,
+}: {
+	projectId: string;
+	isSpecRunActive: boolean;
+	onRunStarted: (runId: string, publicToken: string) => void;
+	onError: (message: string) => Promise<void>;
+}) {
+	const [isSubmitting, setIsSubmitting] = useState(false);
+	const nodes = useCanvasNodes();
+	const edges = useCanvasEdges();
+	const feedMessagesResult = useFeedMessages(AI_CHAT_FEED_ID, { limit: 100 });
+	const chatHistory = useMemo(() => {
+		const rawFeedMessages =
+			"messages" in feedMessagesResult
+				? (feedMessagesResult.messages ?? [])
+				: [];
+
+		return rawFeedMessages
+			.map((message) => {
+				if (!isAiChatMessageData(message.data)) return null;
+
+				return {
+					role: message.data.role,
+					content: message.data.content,
+					timestamp: message.data.timestamp,
+					sender: message.data.sender,
+				};
+			})
+			.filter(
+				(message): message is NonNullable<typeof message> => message !== null,
+			)
+			.sort((a, b) => {
+				const leftTime = new Date(a.timestamp).getTime();
+				const rightTime = new Date(b.timestamp).getTime();
+				return leftTime - rightTime;
+			});
+	}, [feedMessagesResult]);
+
+	async function handleGenerateSpec() {
+		if (isSubmitting || isSpecRunActive) return;
+
+		setIsSubmitting(true);
+
+		try {
+			const payload: GenerateSpecRequest = {
+				roomId: projectId,
+				chatHistory,
+				nodes,
+				edges,
+			};
+			const specResponse = await fetch("/api/ai/spec", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(payload),
+			});
+
+			if (!specResponse.ok) {
+				const errorMessage = await readApiErrorMessage(specResponse);
+				throw new Error(errorMessage ?? "Spec run could not be started.");
+			}
+
+			const specData = (await specResponse.json()) as { runId?: unknown };
+			const nextRunId =
+				typeof specData.runId === "string" ? specData.runId : undefined;
+
+			if (!nextRunId) {
+				throw new Error("Spec run id is missing from API response.");
+			}
+
+			const tokenResponse = await fetch("/api/ai/spec/token", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ runId: nextRunId }),
+			});
+
+			if (!tokenResponse.ok) {
+				const errorMessage = await readApiErrorMessage(tokenResponse);
+				throw new Error(errorMessage ?? "Spec run token could not be fetched.");
+			}
+
+			const tokenData = (await tokenResponse.json()) as { token?: unknown };
+			const nextPublicToken =
+				typeof tokenData.token === "string" ? tokenData.token : undefined;
+
+			if (!nextPublicToken) {
+				throw new Error("Spec run public token is missing.");
+			}
+
+			onRunStarted(nextRunId, nextPublicToken);
+		} catch (error) {
+			console.error("Failed to generate spec", error);
+			const message =
+				error instanceof Error
+					? error.message
+					: "Spec generation could not be started.";
+			await onError(message);
+		} finally {
+			setIsSubmitting(false);
+		}
+	}
+
+	return (
+		<Button
+			type="button"
+			className="w-full bg-ai text-white hover:bg-ai/90"
+			disabled={isSubmitting || isSpecRunActive}
+			onClick={handleGenerateSpec}
+		>
+			{isSubmitting || isSpecRunActive ? (
+				<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+			) : (
+				<FileText className="mr-2 h-4 w-4" />
+			)}
+			{isSubmitting
+				? "Starting Spec"
+				: isSpecRunActive
+					? "Generating Spec"
+					: "Generate Spec"}
+		</Button>
+	);
+}
+
 function RunTracker({
 	runId,
 	publicToken,
@@ -624,6 +956,37 @@ function isFeedAlreadyExistsError(error: unknown): boolean {
 	);
 }
 
+interface FlowStorageSnapshot {
+	flow?: {
+		nodes?: Record<string, CanvasNode>;
+		edges?: Record<string, CanvasEdge>;
+	};
+}
+
+function useCanvasNodes(): CanvasNode[] {
+	const nodesMap = useStorage((storage) => {
+		const flow = (storage as unknown as FlowStorageSnapshot).flow;
+		return flow?.nodes ?? null;
+	});
+
+	return useMemo(() => {
+		if (!nodesMap) return [];
+		return Object.values(nodesMap);
+	}, [nodesMap]);
+}
+
+function useCanvasEdges(): CanvasEdge[] {
+	const edgesMap = useStorage((storage) => {
+		const flow = (storage as unknown as FlowStorageSnapshot).flow;
+		return flow?.edges ?? null;
+	});
+
+	return useMemo(() => {
+		if (!edgesMap) return [];
+		return Object.values(edgesMap);
+	}, [edgesMap]);
+}
+
 async function readApiErrorMessage(
 	response: Response,
 ): Promise<string | undefined> {
@@ -636,4 +999,255 @@ async function readApiErrorMessage(
 	} catch {
 		return undefined;
 	}
+}
+
+const specKeys = {
+	list: (projectId: string) => ["project-specs", projectId] as const,
+	preview: (projectId: string, specId: string) =>
+		["project-specs", projectId, specId, "preview"] as const,
+};
+
+async function fetchProjectSpecs(
+	projectId: string,
+): Promise<ProjectSpecListItem[]> {
+	const response = await fetch(
+		`/api/projects/${encodeURIComponent(projectId)}/specs`,
+	);
+
+	if (!response.ok) {
+		const errorMessage = await readApiErrorMessage(response);
+		throw new Error(errorMessage ?? "Specs could not be loaded.");
+	}
+
+	const body = (await response.json()) as { specs?: unknown };
+
+	if (!Array.isArray(body.specs)) {
+		throw new Error("Specs response is invalid.");
+	}
+
+	return body.specs.filter(isProjectSpecListItem);
+}
+
+async function fetchSpecMarkdown(
+	projectId: string,
+	specId: string,
+): Promise<string> {
+	const response = await fetch(getSpecDownloadUrl(projectId, specId));
+
+	if (!response.ok) {
+		const errorMessage = await readApiErrorMessage(response);
+		throw new Error(errorMessage ?? "Spec preview could not be loaded.");
+	}
+
+	return response.text();
+}
+
+function isProjectSpecListItem(value: unknown): value is ProjectSpecListItem {
+	if (typeof value !== "object" || value === null) return false;
+
+	const candidate = value as Record<string, unknown>;
+
+	return (
+		typeof candidate.id === "string" &&
+		typeof candidate.projectId === "string" &&
+		typeof candidate.createdAt === "string"
+	);
+}
+
+function getSpecDownloadUrl(projectId: string, specId: string): string {
+	return `/api/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(
+		specId,
+	)}/download`;
+}
+
+function formatSpecFilename(spec: ProjectSpecListItem): string {
+	const date = new Date(spec.createdAt);
+	const dateLabel = Number.isNaN(date.getTime())
+		? "generated"
+		: date.toISOString().slice(0, 10);
+	const shortId = spec.id.slice(0, 8);
+
+	return `system-design-spec-${dateLabel}-${shortId}.md`;
+}
+
+function formatSpecCreatedAt(createdAt: string): string {
+	const date = new Date(createdAt);
+	if (Number.isNaN(date.getTime())) return "Unknown date";
+
+	return new Intl.DateTimeFormat(undefined, {
+		dateStyle: "medium",
+		timeStyle: "short",
+	}).format(date);
+}
+
+function MarkdownPreview({ content }: { content: string }) {
+	const blocks = useMemo(() => parseMarkdownBlocks(content), [content]);
+
+	return (
+		<div className="space-y-4 text-sm leading-6 text-copy-secondary">
+			{blocks.length > 0 ? (
+				blocks
+			) : (
+				<p className="text-copy-muted">This spec is empty.</p>
+			)}
+		</div>
+	);
+}
+
+function parseMarkdownBlocks(content: string): ReactNode[] {
+	const lines = content.replace(/\r\n/g, "\n").split("\n");
+	const blocks: ReactNode[] = [];
+	let index = 0;
+
+	while (index < lines.length) {
+		const line = lines[index] ?? "";
+		const trimmed = line.trim();
+
+		if (!trimmed) {
+			index += 1;
+			continue;
+		}
+
+		if (trimmed.startsWith("```")) {
+			const codeLines: string[] = [];
+			index += 1;
+			while (index < lines.length && !lines[index]?.trim().startsWith("```")) {
+				codeLines.push(lines[index] ?? "");
+				index += 1;
+			}
+			index += 1;
+			blocks.push(
+				<pre
+					key={`code-${index}`}
+					className="overflow-x-auto rounded-2xl border border-surface-border bg-base p-3 font-mono text-xs leading-5 text-copy-primary"
+				>
+					<code>{codeLines.join("\n")}</code>
+				</pre>,
+			);
+			continue;
+		}
+
+		const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/);
+		if (headingMatch) {
+			const level = headingMatch[1].length;
+			const text = headingMatch[2];
+			const className =
+				level === 1
+					? "text-xl font-semibold text-copy-primary"
+					: level === 2
+						? "text-base font-semibold text-copy-primary"
+						: "text-sm font-semibold text-copy-primary";
+			const Tag = level === 1 ? "h1" : level === 2 ? "h2" : "h3";
+
+			blocks.push(
+				<Tag key={`heading-${index}`} className={className}>
+					{renderInlineMarkdown(text)}
+				</Tag>,
+			);
+			index += 1;
+			continue;
+		}
+
+		if (/^[-*]\s+/.test(trimmed) || /^\d+\.\s+/.test(trimmed)) {
+			const ordered = /^\d+\.\s+/.test(trimmed);
+			const items: ReactNode[] = [];
+
+			while (index < lines.length) {
+				const itemLine = lines[index]?.trim() ?? "";
+				const itemMatch = ordered
+					? itemLine.match(/^\d+\.\s+(.+)$/)
+					: itemLine.match(/^[-*]\s+(.+)$/);
+
+				if (!itemMatch) break;
+
+				items.push(
+					<li key={`item-${index}`}>{renderInlineMarkdown(itemMatch[1])}</li>,
+				);
+				index += 1;
+			}
+
+			const ListTag = ordered ? "ol" : "ul";
+			blocks.push(
+				<ListTag
+					key={`list-${index}`}
+					className={cn(
+						"space-y-1 pl-5 text-copy-secondary",
+						ordered ? "list-decimal" : "list-disc",
+					)}
+				>
+					{items}
+				</ListTag>,
+			);
+			continue;
+		}
+
+		if (trimmed.startsWith(">")) {
+			blocks.push(
+				<blockquote
+					key={`quote-${index}`}
+					className="border-l-2 border-ai/50 pl-3 text-copy-muted"
+				>
+					{renderInlineMarkdown(trimmed.replace(/^>\s?/, ""))}
+				</blockquote>,
+			);
+			index += 1;
+			continue;
+		}
+
+		const paragraphLines = [trimmed];
+		index += 1;
+		while (index < lines.length) {
+			const nextLine = lines[index]?.trim() ?? "";
+			if (
+				!nextLine ||
+				nextLine.startsWith("#") ||
+				nextLine.startsWith("```") ||
+				nextLine.startsWith(">") ||
+				/^[-*]\s+/.test(nextLine) ||
+				/^\d+\.\s+/.test(nextLine)
+			) {
+				break;
+			}
+			paragraphLines.push(nextLine);
+			index += 1;
+		}
+
+		blocks.push(
+			<p key={`paragraph-${index}`} className="text-copy-secondary">
+				{renderInlineMarkdown(paragraphLines.join(" "))}
+			</p>,
+		);
+	}
+
+	return blocks;
+}
+
+function renderInlineMarkdown(text: string): ReactNode[] {
+	const segments = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
+
+	return segments.map((segment, index) => {
+		if (segment.startsWith("`") && segment.endsWith("`")) {
+			return (
+				<code
+					key={`${segment}-${index}`}
+					className="rounded-lg bg-subtle px-1.5 py-0.5 font-mono text-xs text-copy-primary"
+				>
+					{segment.slice(1, -1)}
+				</code>
+			);
+		}
+
+		if (segment.startsWith("**") && segment.endsWith("**")) {
+			return (
+				<strong
+					key={`${segment}-${index}`}
+					className="font-semibold text-copy-primary"
+				>
+					{segment.slice(2, -2)}
+				</strong>
+			);
+		}
+
+		return segment;
+	});
 }

@@ -5,6 +5,7 @@ import {
 	type Project as PrismaProject,
 } from "@/app/generated/prisma/client";
 import { ApiError } from "@/lib/api-response";
+import { deleteCanvasSnapshot } from "@/lib/canvas-service";
 import { prisma } from "@/lib/prisma";
 import { getLiveblocksClient } from "@/lib/liveblocks";
 import { slugify } from "@/lib/utils";
@@ -140,7 +141,8 @@ export async function deleteProject(
 	projectId: string,
 	ownerId: string,
 ): Promise<ProjectDto> {
-	await assertProjectOwner(projectId, ownerId);
+	const existingProject = await getOwnedProject(projectId, ownerId);
+	await deleteCanvasSnapshot(existingProject.canvasJsonPath);
 
 	const project = await prisma.project.delete({
 		where: { id: projectId },
@@ -243,9 +245,15 @@ async function assertProjectOwner(
 	projectId: string,
 	ownerId: string,
 ): Promise<void> {
+	await getOwnedProject(projectId, ownerId);
+}
+
+async function getOwnedProject(
+	projectId: string,
+	ownerId: string,
+): Promise<PrismaProject> {
 	const project = await prisma.project.findUnique({
 		where: { id: projectId },
-		select: { ownerId: true },
 	});
 
 	if (!project) {
@@ -259,6 +267,8 @@ async function assertProjectOwner(
 			"Only the project owner can modify this project.",
 		);
 	}
+
+	return project;
 }
 
 function validateProjectName(name: string): string {

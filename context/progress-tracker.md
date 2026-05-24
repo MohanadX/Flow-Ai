@@ -5,11 +5,11 @@ change.
 
 ## Current Phase
 
-- Phase 26: Design Agent Frontend Wiring
+- Phase 29: Spec UI Integration
 
 ## Current Goal
 
-- Wire AI sidebar prompt submission to design-agent runs with collaborative realtime status and chat updates.
+- Integrate generated specs into the AI sidebar Specs tab with project spec metadata listing, Markdown preview, and download actions.
 
 ## Completed
 
@@ -348,6 +348,41 @@ change.
   - Updated `RunTracker` to release the locked AI input when Trigger.dev realtime subscription errors occur.
   - Skipped the `POST /api/ai/design` authorization finding because it was already fixed in the previous pass and remains valid in current code.
   - `npx tsc --noEmit` and `npm run build` pass with zero errors; `npm run lint` exits successfully with two unrelated warnings in `scratch/test.ts`.
+- Project deletion blob cleanup:
+  - Added `deleteCanvasSnapshot` in `lib/canvas-service.ts` using Vercel Blob `del()` for saved canvas snapshot URLs.
+  - Canvas blob cleanup now treats already-missing blobs as complete and maps other Blob delete failures to `CANVAS_BLOB_DELETE_FAILED`.
+  - Updated `deleteProject` in `lib/project-service.ts` to delete the project's `canvasJsonPath` blob before removing the Prisma project record, preventing orphaned canvas JSON objects when projects are deleted.
+- 27-spec-generation-flow:
+  - Added shared Zod schemas in `types/spec-generation.ts` for spec-generation requests, Trigger payloads, chat history, canvas nodes, and canvas edges.
+  - Added `POST /api/ai/spec` to authenticate the user, validate `roomId`/`chatHistory`/`nodes`/`edges`, resolve project access from `roomId`, trigger `generate-spec`, persist a `TaskRun`, and return `{ runId }`.
+  - Added `POST /api/ai/spec/token` to authenticate the user, verify `TaskRun` ownership by `runId`, and issue a 1-hour Trigger.dev public token scoped to that run.
+  - Added `trigger/generate-spec.ts` with a Zod-validated `generate-spec` schema task using Gemini (`gemini-2.5-flash`) to produce Markdown from the canvas and chat context while updating run metadata/status.
+  - Added `.trigger/**` to ESLint global ignores so generated Trigger.dev temp bundles are not linted as source files.
+  - `npx tsc --noEmit`, `npm run lint`, and `npm run build` pass; lint still reports two pre-existing warnings in `scratch/test.ts`.
+- 28-spec-persistance-download:
+  - Added `ProjectSpec` Prisma metadata model with `id`, `projectId`, `filePath`, `createdAt`, project relation, cascade delete, and project/date index.
+  - Added migration `20260524124500_add_project_specs`, applied it with `npx prisma migrate deploy`, and regenerated Prisma Client.
+  - Extracted Prisma client creation to `lib/prisma-runtime.ts` so Trigger tasks can persist metadata while `lib/prisma.ts` remains protected by `server-only` for Next route usage.
+  - Added `lib/spec-service.ts` to save generated Markdown specs to private Vercel Blob paths under `specs/{projectId}/{specId}.md`, create `ProjectSpec` rows, load private spec blobs, and build Markdown attachment headers.
+  - Updated `generate-spec` to upload generated Markdown to Vercel Blob, persist `ProjectSpec` metadata, set `specId` in Trigger run metadata, and return `{ specId, content }`.
+  - Added `GET /api/projects/[projectId]/specs/[specId]/download` to authenticate the user, verify project access, verify the spec belongs to the project, load the private Blob content, and return it as a Markdown attachment.
+  - Updated `context/architecture.md` so spec generation output references Vercel Blob plus `ProjectSpec` metadata instead of filesystem storage.
+  - `npx prisma format`, `npx prisma migrate deploy`, `npx prisma generate`, `npx tsc --noEmit`, `npm run lint`, and `npm run build` pass; lint still reports two pre-existing warnings in `scratch/test.ts`.
+- 29-spec-ui-integration:
+  - Added `GET /api/projects/[projectId]/specs` to return authenticated project spec metadata ordered by newest first.
+  - Replaced the static Specs tab placeholder in `components/editor/ai-sidebar.tsx` with a compact React Query-backed spec list.
+  - Added clickable spec rows showing derived Markdown filenames and creation timestamps.
+  - Added per-row download actions that call the authenticated Markdown attachment endpoint.
+  - Added a shadcn Dialog preview modal that fetches Markdown through the download endpoint, renders headings/lists/code/quotes/paragraphs, and removes preview query data when closed.
+  - Added modal download and close actions while preserving the existing AI sidebar layout.
+  - `npx tsc --noEmit` and `npm run build` pass with zero errors; `npm run lint` exits successfully with two pre-existing warnings in `scratch/test.ts`.
+- Spec API runtime fix:
+  - Hardened the development Prisma singleton so it discards stale cached clients that do not expose all current generated model delegates, including `projectSpec`.
+  - This prevents `/api/projects/[projectId]/specs` from reusing a pre-`ProjectSpec` client after schema/client regeneration during local development.
+- Spec generation button fix:
+  - Wired the Specs tab `Generate Spec` button in `components/editor/ai-sidebar.tsx` to collect the current Liveblocks React Flow graph and AI chat history, call `POST /api/ai/spec`, fetch the Trigger.dev public token from `/api/ai/spec/token`, and track the run until completion.
+  - Added loading/disabled states while a spec run starts or executes, posts completion/failure messages to the shared AI chat, and invalidates the project specs query after successful generation.
+  - `npx tsc --noEmit` and `npm run build` pass with zero errors.
 
 ## In Progress
 
