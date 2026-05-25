@@ -1,4 +1,4 @@
-import { metadata, queue, schemaTask } from "@trigger.dev/sdk/v3";
+import { metadata, queue, schemaTask } from "`@trigger.dev/sdk`";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText } from "ai";
 
