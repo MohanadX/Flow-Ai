@@ -1,4 +1,4 @@
-import { metadata, queue, schemaTask } from "`@trigger.dev/sdk`";
+import { metadata, queue, schemaTask } from "@trigger.dev/sdk/v3";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText } from "ai";
 
@@ -20,7 +20,9 @@ export const generateSpec = schemaTask({
 	maxDuration: 300,
 	run: async (payload) => {
 		if (payload.projectId !== payload.roomId) {
-			throw new Error("Spec generation requires projectId and roomId to match.");
+			throw new Error(
+				"Spec generation requires projectId and roomId to match.",
+			);
 		}
 
 		if (!process.env.GOOGLE_AI_API_KEY) {
@@ -145,5 +147,8 @@ function normalizeMarkdown(value: string): string {
 }
 
 function normalizeInlineText(value: string): string {
-	return value.replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim();
+	return value
+		.replace(/[\u0000-\u001F\u007F]/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
 }

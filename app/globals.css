@@ -183,8 +183,7 @@
 
 @layer base {
 	* {
-	* {
-		`@apply` border-border outline-ring/50;
+		@apply border-border outline-ring/50;
 
 		scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 		scrollbar-width: thin;

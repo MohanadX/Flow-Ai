@@ -30,16 +30,12 @@ export async function saveCanvasSnapshot(
 	projectId: string,
 	canvas: CanvasSnapshot,
 ): Promise<PersistCanvasResult> {
-	const blob = await put(
-		`canvas/${projectId}.json`,
-		JSON.stringify(canvas),
-		{
-			access: "private",
-			allowOverwrite: true,
-			cacheControlMaxAge: 60,
-			contentType: "application/json",
-		},
-	);
+	const blob = await put(`canvas/${projectId}.json`, JSON.stringify(canvas), {
+		access: "private",
+		allowOverwrite: true,
+		cacheControlMaxAge: 60,
+		contentType: "application/json",
+	});
 
 	await prisma.project.update({
 		where: { id: projectId },

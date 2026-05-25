@@ -9,6 +9,7 @@ import { deleteCanvasSnapshot } from "@/lib/canvas-service";
 import { prisma } from "@/lib/prisma";
 import { getLiveblocksClient } from "@/lib/liveblocks";
 import { slugify } from "@/lib/utils";
+import { del } from "@vercel/blob";
 import type { Project, ProjectLists } from "@/types/project";
 
 const DEFAULT_PROJECT_NAME = "Untitled Project";
@@ -143,6 +144,7 @@ export async function deleteProject(
 ): Promise<ProjectDto> {
 	const existingProject = await getOwnedProject(projectId, ownerId);
 	await deleteCanvasSnapshot(existingProject.canvasJsonPath);
+	await deleteProjectSpecs(existingProject.specs.map((spec) => spec.filePath));
 
 	const project = await prisma.project.delete({
 		where: { id: projectId },
@@ -174,6 +176,26 @@ export async function deleteProject(
 	}
 
 	return serializeProject(project, ownerId);
+}
+
+async function deleteProjectSpecs(
+	projectSpecPaths: (string | null)[],
+): Promise<void> {
+	const validProjectSpecPaths = projectSpecPaths.filter(
+		(v): v is string => !!v,
+	);
+
+	if (validProjectSpecPaths.length === 0) return;
+
+	try {
+		await Promise.all(validProjectSpecPaths.map((path) => del(path)));
+	} catch (error: unknown) {
+		console.error(
+			"Project spec deletion failed",
+			validProjectSpecPaths,
+			getErrorMetadata(error),
+		);
+	}
 }
 
 function getErrorMetadata(error: unknown) {
@@ -251,9 +273,10 @@ async function assertProjectOwner(
 async function getOwnedProject(
 	projectId: string,
 	ownerId: string,
-): Promise<PrismaProject> {
+): Promise<PrismaProject & { specs: { filePath: string | null }[] }> {
 	const project = await prisma.project.findUnique({
 		where: { id: projectId },
+		include: { specs: { select: { filePath: true } } },
 	});
 
 	if (!project) {
