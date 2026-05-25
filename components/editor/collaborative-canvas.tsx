@@ -128,7 +128,14 @@ const SHAPE_TOOLS: ShapeTool[] = [
 	{ shape: "hexagon", label: "Hexagon", Icon: Hexagon },
 ];
 
-import { StarterTemplatesModal } from "@/components/editor/starter-templates-modal";
+import dynamic from "next/dynamic";
+const StarterTemplatesModal = dynamic(
+	() =>
+		import("@/components/editor/starter-templates-modal").then(
+			(md) => md.StarterTemplatesModal,
+		),
+	{ ssr: false },
+);
 import type { CanvasTemplate } from "@/components/editor/starter-templates";
 
 export function CollaborativeCanvas({ roomId }: CollaborativeCanvasProps) {
