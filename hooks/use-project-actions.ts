@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useMemo, useState, useTransition, useOptimistic } from "react";
+import {
+	useCallback,
+	useMemo,
+	useState,
+	useTransition,
+	useOptimistic,
+} from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { slugify } from "@/lib/utils";
@@ -46,25 +52,39 @@ export function useProjectActions({
 	const [error, setError] = useState<string | null>(null);
 	const [, startTransition] = useTransition();
 
-	const [optimisticOwned, dispatchOptimisticOwned] = useOptimistic<Project[], OptimisticAction>(
-		ownedProjects,
-		(state, action) => {
-			if (action.type === "add") return action.project.isOwner ? [action.project, ...state] : state;
-			if (action.type === "update") return state.map((p) => (p.id === action.project.id ? action.project : p));
-			if (action.type === "remove") return action.isOwner ? state.filter((p) => p.id !== action.projectId) : state;
-			return state;
-		}
-	);
+	const [optimisticOwned, dispatchOptimisticOwned] = useOptimistic<
+		Project[],
+		OptimisticAction
+	>(ownedProjects, (state, action) => {
+		if (action.type === "add")
+			return action.project.isOwner ? [action.project, ...state] : state;
+		if (action.type === "update")
+			return state.map((p) =>
+				p.id === action.project.id ? action.project : p,
+			);
+		if (action.type === "remove")
+			return action.isOwner
+				? state.filter((p) => p.id !== action.projectId)
+				: state;
+		return state;
+	});
 
-	const [optimisticShared, dispatchOptimisticShared] = useOptimistic<Project[], OptimisticAction>(
-		sharedProjects,
-		(state, action) => {
-			if (action.type === "add") return !action.project.isOwner ? [action.project, ...state] : state;
-			if (action.type === "update") return state.map((p) => (p.id === action.project.id ? action.project : p));
-			if (action.type === "remove") return !action.isOwner ? state.filter((p) => p.id !== action.projectId) : state;
-			return state;
-		}
-	);
+	const [optimisticShared, dispatchOptimisticShared] = useOptimistic<
+		Project[],
+		OptimisticAction
+	>(sharedProjects, (state, action) => {
+		if (action.type === "add")
+			return !action.project.isOwner ? [action.project, ...state] : state;
+		if (action.type === "update")
+			return state.map((p) =>
+				p.id === action.project.id ? action.project : p,
+			);
+		if (action.type === "remove")
+			return !action.isOwner
+				? state.filter((p) => p.id !== action.projectId)
+				: state;
+		return state;
+	});
 
 	const projects = useMemo(
 		() => [...optimisticOwned, ...optimisticShared],
@@ -169,7 +189,7 @@ export function useProjectActions({
 				});
 
 				const body = await parseProjectResponse(response);
-				
+
 				startTransition(() => {
 					dispatchOptimisticOwned({ type: "update", project: body.project });
 					dispatchOptimisticShared({ type: "update", project: body.project });
@@ -190,8 +210,16 @@ export function useProjectActions({
 					pathname === `/editor/${activeProject.id}`;
 
 				startTransition(() => {
-					dispatchOptimisticOwned({ type: "remove", projectId: activeProject.id, isOwner: activeProject.isOwner });
-					dispatchOptimisticShared({ type: "remove", projectId: activeProject.id, isOwner: activeProject.isOwner });
+					dispatchOptimisticOwned({
+						type: "remove",
+						projectId: activeProject.id,
+						isOwner: activeProject.isOwner,
+					});
+					dispatchOptimisticShared({
+						type: "remove",
+						projectId: activeProject.id,
+						isOwner: activeProject.isOwner,
+					});
 					if (isDeletingActiveProject) {
 						router.replace("/editor");
 						router.refresh();

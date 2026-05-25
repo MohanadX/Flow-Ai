@@ -1,6 +1,6 @@
 import "server-only";
 
-import { get, put } from "@vercel/blob";
+import { BlobNotFoundError, del, get, put } from "@vercel/blob";
 import { ApiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import type { CanvasEdge, CanvasNode, CanvasSnapshot } from "@/types/canvas";
@@ -30,16 +30,12 @@ export async function saveCanvasSnapshot(
 	projectId: string,
 	canvas: CanvasSnapshot,
 ): Promise<PersistCanvasResult> {
-	const blob = await put(
-		`canvas/${projectId}.json`,
-		JSON.stringify(canvas),
-		{
-			access: "private",
-			allowOverwrite: true,
-			cacheControlMaxAge: 60,
-			contentType: "application/json",
-		},
-	);
+	const blob = await put(`canvas/${projectId}.json`, JSON.stringify(canvas), {
+		access: "private",
+		allowOverwrite: true,
+		cacheControlMaxAge: 60,
+		contentType: "application/json",
+	});
 
 	await prisma.project.update({
 		where: { id: projectId },
@@ -72,6 +68,25 @@ export async function loadCanvasSnapshot(
 
 	const parsed: unknown = await new Response(blob.stream).json();
 	return parseStoredCanvasSnapshot(parsed);
+}
+
+export async function deleteCanvasSnapshot(
+	canvasJsonPath: string | null,
+): Promise<void> {
+	if (!canvasJsonPath) return;
+
+	try {
+		await del(canvasJsonPath);
+	} catch (error) {
+		if (error instanceof BlobNotFoundError) return;
+
+		console.error("Canvas blob deletion failed", canvasJsonPath, error);
+		throw new ApiError(
+			502,
+			"CANVAS_BLOB_DELETE_FAILED",
+			"Saved canvas could not be deleted.",
+		);
+	}
 }
 
 function parseStoredCanvasSnapshot(value: unknown): CanvasSnapshot {
