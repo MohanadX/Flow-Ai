@@ -533,6 +533,12 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 										role="button"
 										tabIndex={0}
 										onClick={() => setSelectedSpec(spec)}
+										onKeyDown={(event) => {
+											if (event.key === "Enter" || event.key === " ") {
+												event.preventDefault();
+												setSelectedSpec(spec);
+											}
+										}}
 										className="group flex w-full items-center gap-3 rounded-2xl border border-surface-border bg-elevated p-3 text-left transition hover:border-ai/40 hover:bg-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ai/50"
 									>
 										<div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-subtle text-ai-text">

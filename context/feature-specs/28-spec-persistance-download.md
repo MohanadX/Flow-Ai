@@ -44,7 +44,7 @@ It should:
 
 ### Notes
 
-- check `context/project-overview.md` and `context/architecture-context.md` first
+- check `context/project-overview.md` and `context/architecture.md` first
 - reuse existing project access patterns
 - Prisma stores metadata, Vercel Blob stores content
 

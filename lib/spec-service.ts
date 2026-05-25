@@ -1,4 +1,4 @@
-import { get, put } from "@vercel/blob";
+import { get, put, del } from "@vercel/blob";
 import { randomUUID } from "node:crypto";
 
 import { ApiError } from "@/lib/api-response";
@@ -29,13 +29,30 @@ export async function saveGeneratedSpec(
 		contentType: "text/markdown; charset=utf-8",
 	});
 
-	const spec = await prisma.projectSpec.create({
-		data: {
-			id: specId,
-			projectId,
-			filePath: blob.url,
-		},
-	});
+	let spec;
+	try {
+		spec = await prisma.projectSpec.create({
+			data: {
+				id: specId,
+				projectId,
+				filePath: blob.url,
+			},
+		});
+	} catch (error: unknown) {
+		await del(blob.url).catch(() => {
+			// Log and ignore blob deletion errors
+			console.error(
+				"Failed to delete blob after spec creation error:",
+				blob.url,
+			);
+		});
+		console.error("Error creating project spec in database:", error);
+		throw new ApiError(
+			500,
+			"SPEC_CREATE_FAILED",
+			"Failed to create project spec.",
+		);
+	}
 
 	return {
 		spec: {

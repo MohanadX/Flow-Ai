@@ -98,7 +98,7 @@ async function fetchAndCacheClerkUser(
 }
 
 function pruneExpiredClerkCache(now: number): void {
-	if (now - lastPrunedAt < CACHE_PRUNE_INTERVAL_MS) return; // explain this line
+	if (now - lastPrunedAt < CACHE_PRUNE_INTERVAL_MS) return; // throttle for clean up flow
 
 	lastPrunedAt = now;
 
