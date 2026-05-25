@@ -1,36 +1,76 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Flow AI
 
-## Getting Started
+Flow AI is a real-time collaborative systems architecture workspace powered by artificial intelligence. It enables developers and teams to visually design systems, collaborate live on architecture diagrams, and generate technical specifications through AI-assisted workflows.
 
-First, run the development server:
+## ✨ Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- Real-time collaborative canvas
+- Live multi-user synchronization
+- AI-powered architecture assistance
+- Technical specification generation
+- Interactive node-based editor
+- Drag-and-drop workflow building
+- Undo / Redo history support
+- Autosave functionality
+- Presence indicators and live cursors
+- Modern responsive interface
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 🛠 Tech Stack
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Frontend
 
-## Learn More
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
+- React Flow
 
-To learn more about Next.js, take a look at the following resources:
+### Backend & Infrastructure
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Prisma
+- Liveblocks
+- Clerk Authentication
+- Trigger.dev
+- Vercel
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### AI & Development Workflow
 
-## Deploy on Vercel
+- Claude
+- Gemini
+- Codex
+- GitHub Copilot
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🚀 Overview
+
+Flow AI was built as an experiment in combining collaborative interfaces with AI-assisted software workflows. The platform focuses on improving how engineering teams design, discuss, and document software systems.
+
+One of the most unique aspects of this project is that a significant portion of the implementation process relied heavily on modern AI coding assistants and automated review systems. AI tools were used throughout development, iteration, debugging, and code review workflows to accelerate productivity and experimentation.
+
+---
+
+## 🎯 Goals
+
+- Improve collaborative system design workflows
+- Simplify architecture planning
+- Generate technical specifications faster
+- Explore AI-assisted software development
+- Create a modern real-time collaborative experience
+
+---
+
+## 🌐 Live Demo
+
+https://flow-ai-zeta-one.vercel.app/
+
+---
+
+## 👨‍💻 Author
+
+Developed by Mohanad.
+
+- GitHub: https://github.com/MohanadX
+- LinkedIn: https://www.linkedin.com/in/mohanad-ayoub-55bb29382/
