@@ -1,15 +1,32 @@
 "use client";
 
-import { ReactNode, useMemo, useState, createContext, useCallback, useContext } from "react";
+import {
+	ReactNode,
+	useMemo,
+	useState,
+	createContext,
+	useCallback,
+	useContext,
+} from "react";
 import { useParams } from "next/navigation";
 import { LiveblocksProvider, RoomProvider } from "@liveblocks/react";
 import { EditorNavbar } from "@/components/editor/editor-navbar";
 import { ProjectSidebar } from "@/components/editor/project-sidebar";
-import { ProjectDialogs } from "@/components/editor/project-dialogs";
 import { ShareDialog } from "@/components/editor/share-dialog";
 import { AiSidebar } from "@/components/editor/ai-sidebar";
 import { useProjectActions } from "@/hooks/use-project-actions";
 import type { ProjectLists } from "@/types/project";
+import dynamic from "next/dynamic";
+
+const ProjectDialogs = dynamic(
+	() =>
+		import("@/components/editor/project-dialogs").then(
+			(mod) => mod.ProjectDialogs,
+		),
+	{
+		ssr: false,
+	},
+);
 
 export const EditorActionContext = createContext<{ onNewProject: () => void }>({
 	onNewProject: () => {},
