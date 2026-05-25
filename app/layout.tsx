@@ -4,6 +4,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { dark } from "@clerk/ui/themes";
 import { ReactQueryProvider } from "@/components/providers/react-query-provider";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -59,6 +60,7 @@ export default function RootLayout({
 					</ReactQueryProvider>
 				</ClerkProvider>
 				<SpeedInsights />
+				<Analytics />
 			</body>
 		</html>
 	);

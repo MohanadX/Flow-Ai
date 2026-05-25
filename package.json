@@ -25,6 +25,7 @@
 		"@tanstack/react-query-devtools": "^5.100.9",
 		"@trigger.dev/react-hooks": "4.4.6",
 		"@trigger.dev/sdk": "4.4.6",
+		"@vercel/analytics": "^2.0.1",
 		"@vercel/blob": "^2.3.3",
 		"@vercel/speed-insights": "^2.0.0",
 		"@xyflow/react": "^12.10.2",
