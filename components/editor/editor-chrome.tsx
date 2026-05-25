@@ -12,7 +12,6 @@ import { useParams } from "next/navigation";
 import { LiveblocksProvider, RoomProvider } from "@liveblocks/react";
 import { EditorNavbar } from "@/components/editor/editor-navbar";
 import { ProjectSidebar } from "@/components/editor/project-sidebar";
-import { ShareDialog } from "@/components/editor/share-dialog";
 import { AiSidebar } from "@/components/editor/ai-sidebar";
 import { useProjectActions } from "@/hooks/use-project-actions";
 import type { ProjectLists } from "@/types/project";
@@ -23,6 +22,13 @@ const ProjectDialogs = dynamic(
 		import("@/components/editor/project-dialogs").then(
 			(mod) => mod.ProjectDialogs,
 		),
+	{
+		ssr: false,
+	},
+);
+const ShareDialog = dynamic(
+	() =>
+		import("@/components/editor/share-dialog").then((mod) => mod.ShareDialog),
 	{
 		ssr: false,
 	},
