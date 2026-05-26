@@ -401,6 +401,7 @@ change.
 - Design agent canvas mutation fix:
   - Replaced hand-built Liveblocks storage JSON Patch operations in `trigger/design-agent.ts` with `@liveblocks/react-flow/node` `mutateFlow()` so background task writes use the same LiveMap/LiveObject representation as the React Flow canvas client.
   - The design agent now returns applied mutation counts and skips missing node/edge update/delete targets, preventing completed runs from reporting visible updates that were never applied to the canvas.
+  - Added explicit duplicate ID guards before adding generated nodes or edges so existing canvas elements are not overwritten and addition counts only reflect newly inserted records.
   - `npx tsc --noEmit` and `npm run build` pass with zero errors; `npm run lint` exits successfully with two pre-existing warnings in `scratch/test.ts`.
 
 ## In Progress

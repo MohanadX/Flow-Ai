@@ -438,6 +438,8 @@ async function applyGeneratedArchitecture(
 		{ client: liveblocks, roomId },
 		(flow) => {
 			for (const node of generatedArchitecture.addedNodes) {
+				if (flow.getNode(node.id)) continue;
+
 				flow.addNode({
 					id: node.id,
 					type: CANVAS_NODE_TYPE,
@@ -494,6 +496,8 @@ async function applyGeneratedArchitecture(
 			}
 
 			for (const edge of generatedArchitecture.addedEdges) {
+				if (flow.getEdge(edge.id)) continue;
+
 				flow.addEdge({
 					id: edge.id,
 					type: CANVAS_EDGE_TYPE,
