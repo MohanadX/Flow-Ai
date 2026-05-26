@@ -397,7 +397,11 @@ change.
 - Liveblocks API endpoint fix:
   - Fixed `Failed to broadcast ai-status-feed event` error by updating the Liveblocks REST API endpoint in `trigger/design-agent.ts` from `/events` to `/broadcast_event` in accordance with Liveblocks documentation.
 - Liveblocks JSON Patch fix:
-  - Fixed an issue where the canvas did not update after the design agent successfully generated an architecture. Updated the HTTP method for the Liveblocks `storage/json-patch` API call from `PATCH` to `POST` in accordance with Liveblocks documentation.
+  - Superseded the earlier direct JSON Patch approach for design-agent canvas writes; Liveblocks' current documented `storage/json-patch` method remains `PATCH`, but the design agent no longer depends on hand-built patch paths for React Flow storage updates.
+- Design agent canvas mutation fix:
+  - Replaced hand-built Liveblocks storage JSON Patch operations in `trigger/design-agent.ts` with `@liveblocks/react-flow/node` `mutateFlow()` so background task writes use the same LiveMap/LiveObject representation as the React Flow canvas client.
+  - The design agent now returns applied mutation counts and skips missing node/edge update/delete targets, preventing completed runs from reporting visible updates that were never applied to the canvas.
+  - `npx tsc --noEmit` and `npm run build` pass with zero errors; `npm run lint` exits successfully with two pre-existing warnings in `scratch/test.ts`.
 
 ## In Progress
 

@@ -2,6 +2,7 @@ import { metadata, queue, retry, task } from "@trigger.dev/sdk";
 import { generateText } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { Liveblocks } from "@liveblocks/node";
+import { mutateFlow } from "@liveblocks/react-flow/node";
 import { z } from "zod";
 import {
 	CANVAS_EDGE_TYPE,
@@ -9,6 +10,8 @@ import {
 	NODE_COLORS,
 	NODE_SHAPES,
 	SHAPE_DEFAULT_SIZES,
+	type CanvasEdge,
+	type CanvasNode,
 	type NodeShape,
 } from "@/types/canvas";
 
@@ -60,6 +63,15 @@ interface SanitizedAddedEdge {
 interface SanitizedUpdatedEdge {
 	id: string;
 	label?: string;
+}
+
+interface AppliedArchitectureCounts {
+	addedNodes: number;
+	updatedNodes: number;
+	deletedNodes: number;
+	addedEdges: number;
+	updatedEdges: number;
+	deletedEdges: number;
 }
 
 const LIVEBLOCKS_API = "https://api.liveblocks.io/v2/rooms";
@@ -299,49 +311,18 @@ You MUST reply with a JSON object that matches the following schema:
 
 		await setPresence(true, "Applying changes to canvas...", 60);
 
-		const ops = buildPatchOperations(generatedArchitecture);
-
-		if (ops.length > 0) {
-			const patchUrl = `${LIVEBLOCKS_API}/${roomId}/storage/json-patch`;
-			const patchResponse = await retry.fetch(patchUrl, {
-				method: "POST",
-				headers: liveblocksHeaders(liveblocksSecret),
-				body: JSON.stringify(ops),
-			});
-
-			if (!patchResponse.ok) {
-				const errBody = await patchResponse.text();
-
-				if (patchResponse.status === 422 && errBody.includes("missing")) {
-					console.log("Attempting to initialize /flow object...");
-					const initOps = [
-						{ op: "add", path: "/flow", value: { nodes: {}, edges: {} } },
-						...ops,
-					];
-					await liveblocksRequest(patchUrl, {
-						method: "POST",
-						headers: liveblocksHeaders(liveblocksSecret),
-						body: JSON.stringify(initOps),
-					});
-				} else {
-					throw new Error(
-						`Liveblocks JSON Patch failed with ${patchResponse.status}: ${errBody}`,
-					);
-				}
-			}
-		}
+		const appliedCounts = await applyGeneratedArchitecture(
+			liveblocks,
+			roomId,
+			generatedArchitecture,
+		);
 
 		await setPresence(false, "Done", 2);
 		metadata.set("statusMessage", "Generation complete.");
 
 		return {
 			status: "completed",
-			addedNodes: generatedArchitecture.addedNodes.length,
-			updatedNodes: generatedArchitecture.updatedNodes.length,
-			deletedNodes: generatedArchitecture.deletedNodeIds.length,
-			addedEdges: generatedArchitecture.addedEdges.length,
-			updatedEdges: generatedArchitecture.updatedEdges.length,
-			deletedEdges: generatedArchitecture.deletedEdgeIds.length,
+			...appliedCounts,
 		};
 	},
 });
@@ -439,131 +420,115 @@ function sanitizeUpdatedEdge(
 	};
 }
 
-function buildPatchOperations(
+async function applyGeneratedArchitecture(
+	liveblocks: Liveblocks,
+	roomId: string,
 	generatedArchitecture: GeneratedArchitecture,
-): Record<string, unknown>[] {
-	const ops: Record<string, unknown>[] = [];
+): Promise<AppliedArchitectureCounts> {
+	const appliedCounts: AppliedArchitectureCounts = {
+		addedNodes: 0,
+		updatedNodes: 0,
+		deletedNodes: 0,
+		addedEdges: 0,
+		updatedEdges: 0,
+		deletedEdges: 0,
+	};
 
-	for (const node of generatedArchitecture.addedNodes) {
-		ops.push({
-			op: "add",
-			path: `/flow/nodes/${node.id}`,
-			value: {
-				id: node.id,
-				type: CANVAS_NODE_TYPE,
-				position: { x: node.x, y: node.y },
-				width: node.width,
-				height: node.height,
-				data: {
-					label: node.label,
-					shape: node.shape,
-					color: node.color,
-					textColor: node.textColor,
-				},
-				style: { width: node.width, height: node.height },
-			},
-		});
-	}
+	await mutateFlow<CanvasNode, CanvasEdge>(
+		{ client: liveblocks, roomId },
+		(flow) => {
+			for (const node of generatedArchitecture.addedNodes) {
+				flow.addNode({
+					id: node.id,
+					type: CANVAS_NODE_TYPE,
+					position: { x: node.x, y: node.y },
+					width: node.width,
+					height: node.height,
+					data: {
+						label: node.label,
+						shape: node.shape,
+						color: node.color,
+						textColor: node.textColor,
+					},
+					style: { width: node.width, height: node.height },
+				});
+				appliedCounts.addedNodes += 1;
+			}
 
-	for (const node of generatedArchitecture.updatedNodes) {
-		const { id, x, y, width, height, label, shape, color, textColor } = node;
-		if (x !== undefined)
-			ops.push({
-				op: "replace",
-				path: `/flow/nodes/${id}/position/x`,
-				value: x,
-			});
-		if (y !== undefined)
-			ops.push({
-				op: "replace",
-				path: `/flow/nodes/${id}/position/y`,
-				value: y,
-			});
-		if (width !== undefined) {
-			ops.push({
-				op: "replace",
-				path: `/flow/nodes/${id}/width`,
-				value: width,
-			});
-			ops.push({
-				op: "replace",
-				path: `/flow/nodes/${id}/style/width`,
-				value: width,
-			});
-		}
-		if (height !== undefined) {
-			ops.push({
-				op: "replace",
-				path: `/flow/nodes/${id}/height`,
-				value: height,
-			});
-			ops.push({
-				op: "replace",
-				path: `/flow/nodes/${id}/style/height`,
-				value: height,
-			});
-		}
-		if (label !== undefined)
-			ops.push({
-				op: "replace",
-				path: `/flow/nodes/${id}/data/label`,
-				value: label,
-			});
-		if (shape !== undefined)
-			ops.push({
-				op: "replace",
-				path: `/flow/nodes/${id}/data/shape`,
-				value: shape,
-			});
-		if (color !== undefined)
-			ops.push({
-				op: "replace",
-				path: `/flow/nodes/${id}/data/color`,
-				value: color,
-			});
-		if (textColor !== undefined)
-			ops.push({
-				op: "replace",
-				path: `/flow/nodes/${id}/data/textColor`,
-				value: textColor,
-			});
-	}
+			for (const node of generatedArchitecture.updatedNodes) {
+				const existingNode = flow.getNode(node.id);
+				if (!existingNode) continue;
 
-	for (const id of generatedArchitecture.deletedNodeIds) {
-		ops.push({ op: "remove", path: `/flow/nodes/${id}` });
-	}
+				const nextNode: CanvasNode = {
+					...existingNode,
+					position: {
+						x: node.x ?? existingNode.position.x,
+						y: node.y ?? existingNode.position.y,
+					},
+					width: node.width ?? existingNode.width,
+					height: node.height ?? existingNode.height,
+					data: {
+						...existingNode.data,
+						...(node.label !== undefined ? { label: node.label } : {}),
+						...(node.shape !== undefined ? { shape: node.shape } : {}),
+						...(node.color !== undefined ? { color: node.color } : {}),
+						...(node.textColor !== undefined
+							? { textColor: node.textColor }
+							: {}),
+					},
+					style: {
+						...existingNode.style,
+						width: node.width ?? existingNode.width,
+						height: node.height ?? existingNode.height,
+					},
+				};
 
-	for (const edge of generatedArchitecture.addedEdges) {
-		ops.push({
-			op: "add",
-			path: `/flow/edges/${edge.id}`,
-			value: {
-				id: edge.id,
-				type: CANVAS_EDGE_TYPE,
-				source: edge.source,
-				target: edge.target,
-				data: {
-					label: edge.label || "",
-				},
-			},
-		});
-	}
+				flow.updateNode(node.id, nextNode);
+				appliedCounts.updatedNodes += 1;
+			}
 
-	for (const edge of generatedArchitecture.updatedEdges) {
-		if (edge.label !== undefined) {
-			ops.push({
-				op: "replace",
-				path: `/flow/edges/${edge.id}/data/label`,
-				value: edge.label,
-			});
-		}
-	}
+			for (const id of generatedArchitecture.deletedNodeIds) {
+				if (!flow.getNode(id)) continue;
+				flow.removeNode(id);
+				appliedCounts.deletedNodes += 1;
+			}
 
-	for (const id of generatedArchitecture.deletedEdgeIds) {
-		ops.push({ op: "remove", path: `/flow/edges/${id}` });
-	}
+			for (const edge of generatedArchitecture.addedEdges) {
+				flow.addEdge({
+					id: edge.id,
+					type: CANVAS_EDGE_TYPE,
+					source: edge.source,
+					target: edge.target,
+					data: {
+						label: edge.label || "",
+					},
+				});
+				appliedCounts.addedEdges += 1;
+			}
 
-	return ops;
+			for (const edge of generatedArchitecture.updatedEdges) {
+				const existingEdge = flow.getEdge(edge.id);
+				if (!existingEdge || edge.label === undefined) continue;
+
+				flow.updateEdge(edge.id, {
+					...existingEdge,
+					data: {
+						...existingEdge.data,
+						label: edge.label,
+					},
+				});
+				appliedCounts.updatedEdges += 1;
+			}
+
+			for (const id of generatedArchitecture.deletedEdgeIds) {
+				if (!flow.getEdge(id)) continue;
+				flow.removeEdge(id);
+				appliedCounts.deletedEdges += 1;
+			}
+		},
+	);
+
+	return appliedCounts;
 }
 
 function liveblocksHeaders(secret: string): HeadersInit {
