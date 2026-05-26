@@ -384,6 +384,11 @@ change.
   - Added loading/disabled states while a spec run starts or executes, posts completion/failure messages to the shared AI chat, and invalidates the project specs query after successful generation.
   - `npx tsc --noEmit` and `npm run build` pass with zero errors.
 
+- Trigger CLI task detection fix:
+  - Fixed "Run cannot execute until a version includes the task and queue" error when triggering the AI design agent.
+  - Replaced `@trigger.dev/sdk/v3` imports with `@trigger.dev/sdk` across `trigger/design-agent.ts`, `trigger/generate-spec.ts`, and `trigger.config.ts`.
+  - The AST parser in `@trigger.dev/build` (v4.4.6) strictly scans for `@trigger.dev/sdk` imports to detect and register tasks/queues during local dev and builds.
+
 ## In Progress
 
 - Phase 26 manual multi-client run/status verification in shared rooms.

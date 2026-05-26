@@ -1,4 +1,4 @@
-import { metadata, queue, retry, task } from "@trigger.dev/sdk/v3";
+import { metadata, queue, retry, task } from "@trigger.dev/sdk";
 import { generateText } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { Liveblocks } from "@liveblocks/node";
