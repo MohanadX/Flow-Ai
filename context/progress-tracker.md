@@ -394,6 +394,8 @@ change.
   - Seeded shared projects using `initialData` from SSR to prevent loading flashes.
   - Enabled `refetchOnWindowFocus` on `useSharedProjects` so the inviter/invitee gets the updated shared projects list automatically when switching to the tab.
   - Replaced static `sharedProjects` array in `EditorChrome` with dynamic data from `useSharedProjects`.
+- Liveblocks API endpoint fix:
+  - Fixed `Failed to broadcast ai-status-feed event` error by updating the Liveblocks REST API endpoint in `trigger/design-agent.ts` from `/events` to `/broadcast_event` in accordance with Liveblocks documentation.
 
 ## In Progress
 

@@ -185,7 +185,7 @@ export const designAgentTask = task({
 			}
 
 			try {
-				await liveblocksRequest(`${LIVEBLOCKS_API}/${roomId}/events`, {
+				await liveblocksRequest(`${LIVEBLOCKS_API}/${roomId}/broadcast_event`, {
 					method: "POST",
 					headers: liveblocksHeaders(liveblocksSecret),
 					body: JSON.stringify({
