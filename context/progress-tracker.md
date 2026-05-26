@@ -396,6 +396,8 @@ change.
   - Replaced static `sharedProjects` array in `EditorChrome` with dynamic data from `useSharedProjects`.
 - Liveblocks API endpoint fix:
   - Fixed `Failed to broadcast ai-status-feed event` error by updating the Liveblocks REST API endpoint in `trigger/design-agent.ts` from `/events` to `/broadcast_event` in accordance with Liveblocks documentation.
+- Liveblocks JSON Patch fix:
+  - Fixed an issue where the canvas did not update after the design agent successfully generated an architecture. Updated the HTTP method for the Liveblocks `storage/json-patch` API call from `PATCH` to `POST` in accordance with Liveblocks documentation.
 
 ## In Progress
 

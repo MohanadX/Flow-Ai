@@ -304,7 +304,7 @@ You MUST reply with a JSON object that matches the following schema:
 		if (ops.length > 0) {
 			const patchUrl = `${LIVEBLOCKS_API}/${roomId}/storage/json-patch`;
 			const patchResponse = await retry.fetch(patchUrl, {
-				method: "PATCH",
+				method: "POST",
 				headers: liveblocksHeaders(liveblocksSecret),
 				body: JSON.stringify(ops),
 			});
@@ -319,7 +319,7 @@ You MUST reply with a JSON object that matches the following schema:
 						...ops,
 					];
 					await liveblocksRequest(patchUrl, {
-						method: "PATCH",
+						method: "POST",
 						headers: liveblocksHeaders(liveblocksSecret),
 						body: JSON.stringify(initOps),
 					});
