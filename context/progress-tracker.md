@@ -388,6 +388,12 @@ change.
   - Fixed "Run cannot execute until a version includes the task and queue" error when triggering the AI design agent.
   - Replaced `@trigger.dev/sdk/v3` imports with `@trigger.dev/sdk` across `trigger/design-agent.ts`, `trigger/generate-spec.ts`, and `trigger.config.ts`.
   - The AST parser in `@trigger.dev/build` (v4.4.6) strictly scans for `@trigger.dev/sdk` imports to detect and register tasks/queues during local dev and builds.
+- Shared Projects Stale Data fix:
+  - Added `GET /api/projects/shared` route.
+  - Added `useSharedProjects` hook using `@tanstack/react-query` to fetch shared projects.
+  - Seeded shared projects using `initialData` from SSR to prevent loading flashes.
+  - Enabled `refetchOnWindowFocus` on `useSharedProjects` so the inviter/invitee gets the updated shared projects list automatically when switching to the tab.
+  - Replaced static `sharedProjects` array in `EditorChrome` with dynamic data from `useSharedProjects`.
 
 ## In Progress
 

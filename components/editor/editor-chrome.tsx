@@ -14,6 +14,7 @@ import { EditorNavbar } from "@/components/editor/editor-navbar";
 import { ProjectSidebar } from "@/components/editor/project-sidebar";
 import { AiSidebar } from "@/components/editor/ai-sidebar";
 import { useProjectActions } from "@/hooks/use-project-actions";
+import { useSharedProjects } from "@/hooks/use-shared-projects";
 import type { ProjectLists } from "@/types/project";
 import dynamic from "next/dynamic";
 
@@ -70,9 +71,13 @@ export function EditorChrome({
 	const params = useParams<{ projectId?: string }>();
 	const activeProjectId = params?.projectId ?? null;
 
+	// Keep shared projects fresh — re-fetches on window focus so invitees
+	// see newly-shared projects without a manual page reload.
+	const { data: liveSharedProjects } = useSharedProjects(sharedProjects);
+
 	const projectActions = useProjectActions({
 		ownedProjects,
-		sharedProjects,
+		sharedProjects: liveSharedProjects,
 		activeProjectId,
 	});
 	const [isSidebarOpen, setIsSidebarOpen] = useState(true);
