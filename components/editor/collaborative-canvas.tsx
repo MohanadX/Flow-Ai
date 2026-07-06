@@ -6,6 +6,7 @@ import {
 	type KeyboardEvent,
 	type PointerEvent,
 	type ReactNode,
+	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
@@ -164,9 +165,11 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 		null,
 	);
 	const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
+	const [isTemplatesModalMounted, setIsTemplatesModalMounted] = useState(false);
 	const [isCanvasLoadChecked, setIsCanvasLoadChecked] = useState(false);
 	const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
 	const updateMyPresence = useUpdateMyPresence();
+	const closeTemplatesModal = useCallback(() => setIsTemplatesModalOpen(false), [])
 	// Bridge ai-status-feed events out of the RoomProvider to the AiStatusContext.
 	useEventListener(({ event }) => {
 		if (event.type !== "ai-status-feed") return;
@@ -304,13 +307,16 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 	]);
 
 	useEffect(() => {
-		const handleOpenTemplates = () => setIsTemplatesModalOpen(true);
+		const handleOpenTemplates = () => {
+			setIsTemplatesModalMounted(true);
+			setIsTemplatesModalOpen(true);
+		};
 		window.addEventListener("open-starter-templates", handleOpenTemplates);
 		return () =>
 			window.removeEventListener("open-starter-templates", handleOpenTemplates);
 	}, []);
 
-	function handleImportTemplate(template: CanvasTemplate) {
+	const handleImportTemplate = useCallback((template: CanvasTemplate) => {
 		const reactFlowInstance = reactFlowInstanceRef.current;
 		if (!reactFlowInstance) return;
 
@@ -330,7 +336,7 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 		setTimeout(() => {
 			reactFlowInstance.fitView({ duration: 500 });
 		}, 50);
-	}
+	}, [nodes, edges, onNodesChange, onEdgesChange]);
 
 	const undo = useUndo();
 	const redo = useRedo();
@@ -343,15 +349,31 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 		onRedo: redo,
 	});
 
-	function handleDragOver(event: DragEvent<HTMLDivElement>) {
+	const moveDragPreview = useCallback((
+		event: DragEvent<HTMLButtonElement | HTMLDivElement>,
+	) => {
+		if (event.clientX === 0 && event.clientY === 0) return;
+
+		setDragPreview((preview) =>
+			preview
+				? {
+						...preview,
+						x: event.clientX,
+						y: event.clientY,
+					}
+				: preview,
+		);
+	}, []);
+
+	const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
 		if (event.dataTransfer.types.includes(SHAPE_DRAG_MIME_TYPE)) {
 			event.preventDefault();
 			event.dataTransfer.dropEffect = "copy";
 			moveDragPreview(event);
 		}
-	}
+	}, [moveDragPreview]);
 
-	function handleDrop(event: DragEvent<HTMLDivElement>) {
+	const handleDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
 		event.preventDefault();
 		setDragPreview(null);
 
@@ -389,12 +411,12 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 		const changes: NodeChange<CanvasNode>[] = [{ type: "add", item: node }];
 
 		onNodesChange(changes);
-	}
+	}, [onNodesChange]);
 
-	function handleShapeDragStart(
+	const handleShapeDragStart = useCallback((
 		event: DragEvent<HTMLButtonElement>,
 		shape: NodeShape,
-	) {
+	) => {
 		const payload = startShapeDrag(event, shape);
 
 		setDragPreview({
@@ -402,29 +424,13 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 			x: event.clientX,
 			y: event.clientY,
 		});
-	}
+	}, []);
 
-	function handleShapeDragMove(event: DragEvent<HTMLButtonElement>) {
+	const handleShapeDragMove = useCallback((event: DragEvent<HTMLButtonElement>) => {
 		moveDragPreview(event);
-	}
+	}, [moveDragPreview]);
 
-	function moveDragPreview(
-		event: DragEvent<HTMLButtonElement | HTMLDivElement>,
-	) {
-		if (event.clientX === 0 && event.clientY === 0) return;
-
-		setDragPreview((preview) =>
-			preview
-				? {
-						...preview,
-						x: event.clientX,
-						y: event.clientY,
-					}
-				: preview,
-		);
-	}
-
-	function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+	const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
 		const reactFlowInstance = reactFlowInstanceRef.current;
 		if (!reactFlowInstance) return;
 
@@ -434,11 +440,11 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 				y: event.clientY,
 			}),
 		});
-	}
+	}, [updateMyPresence]);
 
-	function handlePointerLeave() {
+	const handlePointerLeave = useCallback(() => {
 		updateMyPresence({ cursor: null });
-	}
+	}, [updateMyPresence]);
 
 	return (
 		<div
@@ -485,11 +491,13 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 				<PresenceAvatars />
 			</ReactFlow>
 			<ShapeDragPreview preview={dragPreview} />
-			<StarterTemplatesModal
-				isOpen={isTemplatesModalOpen}
-				onClose={() => setIsTemplatesModalOpen(false)}
-				onImport={handleImportTemplate}
-			/>
+			{isTemplatesModalMounted && (
+				<StarterTemplatesModal
+					isOpen={isTemplatesModalOpen}
+					onClose={closeTemplatesModal}
+					onImport={handleImportTemplate}
+				/>
+			)}
 		</div>
 	);
 }
@@ -653,14 +661,14 @@ function ShapePanel({
 	const reactFlow = useReactFlow<CanvasNode, CanvasEdge>();
 	const updateMyPresence = useUpdateMyPresence();
 
-	function handlePointerPresence(event: PointerEvent<HTMLDivElement>) {
+	const handlePointerPresence = useCallback((event: PointerEvent<HTMLDivElement>) => {
 		updateMyPresence({
 			cursor: reactFlow.screenToFlowPosition({
 				x: event.clientX,
 				y: event.clientY,
 			}),
 		});
-	}
+	}, [reactFlow, updateMyPresence]);
 
 	return (
 		<div
@@ -718,11 +726,11 @@ function CanvasNodeRenderer({ id, data, selected }: NodeProps<CanvasNode>) {
 		resizeLabelEditor(textareaRef.current);
 	}, [data.label, isEditing]);
 
-	function handleLabelChange(nextLabel: string) {
+	const handleLabelChange = useCallback((nextLabel: string) => {
 		reactFlow.updateNodeData(id, { label: nextLabel });
-	}
+	}, [id, reactFlow]);
 
-	function handleLabelKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+	const handleLabelKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
 		event.stopPropagation();
 
 		if (event.key !== "Escape") return;
@@ -730,7 +738,7 @@ function CanvasNodeRenderer({ id, data, selected }: NodeProps<CanvasNode>) {
 		event.preventDefault();
 		setIsEditing(false);
 		event.currentTarget.blur();
-	}
+	}, []);
 
 	return (
 		<ShapeSurface

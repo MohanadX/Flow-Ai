@@ -2,8 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
 	/* config options here */
-	compress: true,
+	reactCompiler: true,
 	reactStrictMode: true,
+	compress: true,
 	images: {
 		formats: ["image/avif", "image/webp"],
 		remotePatterns: [

@@ -12,7 +12,7 @@ import { useParams } from "next/navigation";
 import { LiveblocksProvider, RoomProvider } from "@liveblocks/react";
 import { EditorNavbar } from "@/components/editor/editor-navbar";
 import { ProjectSidebar } from "@/components/editor/project-sidebar";
-import { AiSidebar } from "@/components/editor/ai-sidebar";
+
 import { useProjectActions } from "@/hooks/use-project-actions";
 import { useSharedProjects } from "@/hooks/use-shared-projects";
 import type { ProjectLists } from "@/types/project";
@@ -33,6 +33,11 @@ const ShareDialog = dynamic(
 	{
 		ssr: false,
 	},
+);
+
+const AiSidebar = dynamic(
+	() => import("@/components/editor/ai-sidebar").then((mod) => mod.AiSidebar),
+	{ ssr: false },
 );
 
 export const EditorActionContext = createContext<{ onNewProject: () => void }>({
@@ -82,6 +87,8 @@ export function EditorChrome({
 	});
 	const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 	const [isAiSidebarOpen, setIsAiSidebarOpen] = useState(false);
+
+	const [isAiSidebarMounted, setIsAiSidebarMounted] = useState(false)
 	const [isShareOpen, setIsShareOpen] = useState(false);
 	/** Latest AI status text from the ai-status-feed. Undefined = no active generation. */
 	const [sharedAiStatus, setSharedAiStatus] = useState<string | undefined>();
@@ -94,6 +101,15 @@ export function EditorChrome({
 		() => ({ sharedAiStatus, onAiStatus }),
 		[sharedAiStatus, onAiStatus],
 	);
+
+	const toggleSidebar = useCallback(() => setIsSidebarOpen((prev) => !prev), []);
+	const toggleAiSidebar = useCallback(() => {
+		setIsAiSidebarMounted(true);
+		setIsAiSidebarOpen((prev) => !prev);
+	}, []);
+	const handleShare = useCallback(() => setIsShareOpen(true), []);
+	const closeSidebar = useCallback(() => setIsSidebarOpen(false), []);
+	const closeAiSidebar = useCallback(() => setIsAiSidebarOpen(false), []);
 
 	const activeProject = useMemo(() => {
 		if (!activeProjectId) return null;
@@ -112,14 +128,16 @@ export function EditorChrome({
 					{isAiSidebarOpen && (
 						<div
 							className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden"
-							onClick={() => setIsAiSidebarOpen(false)}
+							onClick={closeAiSidebar}
 						/>
 					)}
-					<AiSidebar
-						isOpen={isAiSidebarOpen}
-						onClose={() => setIsAiSidebarOpen(false)}
-						projectId={activeProject.id}
-					/>
+					{isAiSidebarMounted && (
+						<AiSidebar
+							isOpen={isAiSidebarOpen}
+							onClose={closeAiSidebar}
+							projectId={activeProject.id}
+						/>
+					)}
 				</>
 			)}
 		</>
@@ -133,16 +151,16 @@ export function EditorChrome({
 				<div className="flex flex-col h-screen overflow-hidden bg-base relative">
 					<EditorNavbar
 						isSidebarOpen={isSidebarOpen}
-						toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+						toggleSidebar={toggleSidebar}
 						projectName={activeProject?.name}
 						isAiSidebarOpen={isAiSidebarOpen}
-						toggleAiSidebar={() => setIsAiSidebarOpen(!isAiSidebarOpen)}
-						onShare={activeProject ? () => setIsShareOpen(true) : undefined}
+						toggleAiSidebar={toggleAiSidebar}
+						onShare={activeProject ? handleShare : undefined}
 					/>
 					<div className="flex flex-1 overflow-hidden relative">
 						<ProjectSidebar
 							isOpen={isSidebarOpen}
-							onClose={() => setIsSidebarOpen(false)}
+							onClose={closeSidebar}
 							ownedProjects={projectActions.ownedProjects}
 							sharedProjects={projectActions.sharedProjects}
 							activeProjectId={activeProjectId}

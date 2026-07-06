@@ -4,6 +4,7 @@ import {
 	FormEvent,
 	KeyboardEvent,
 	type ReactNode,
+	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
@@ -158,6 +159,23 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 
 	const isInputLocked = !isFeedReady || isSubmitting || isRunActive;
 
+	const pushChatMessage = useCallback(async (payload: AiChatMessageData) => {
+		try {
+			await createFeedMessage(
+				AI_CHAT_FEED_ID,
+				payload as unknown as JsonObject,
+				{
+					id: `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+					createdAt: Date.now(),
+				},
+			);
+			setSendError(undefined);
+		} catch (error) {
+			console.error("Failed to push ai-chat message", error);
+			setSendError("Chat feed write failed.");
+		}
+	}, [createFeedMessage]);
+
 	async function submitPrompt(event?: FormEvent<HTMLFormElement>) {
 		event?.preventDefault();
 		const trimmed = prompt.trim();
@@ -268,9 +286,9 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 		submitPrompt();
 	}
 
-	async function handleRunFinished(
+	const handleRunFinished = useCallback(async (
 		status: "COMPLETED" | "FAILED" | "CANCELED",
-	) {
+	) => {
 		const summary =
 			status === "COMPLETED"
 				? "Architecture generation completed."
@@ -290,11 +308,11 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 
 		setRunId(undefined);
 		setPublicToken(undefined);
-	}
+	}, [pushChatMessage]);
 
-	async function handleSpecRunFinished(
+	const handleSpecRunFinished = useCallback(async (
 		status: "COMPLETED" | "FAILED" | "CANCELED",
-	) {
+	) => {
 		const summary =
 			status === "COMPLETED"
 				? "Spec generation completed."
@@ -320,9 +338,9 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 
 		setSpecRunId(undefined);
 		setSpecPublicToken(undefined);
-	}
+	}, [projectId, queryClient, pushChatMessage]);
 
-	function handlePreviewOpenChange(isPreviewOpen: boolean) {
+	const handlePreviewOpenChange = useCallback((isPreviewOpen: boolean) => {
 		if (isPreviewOpen) return;
 
 		if (selectedSpec) {
@@ -331,7 +349,29 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 			});
 		}
 		setSelectedSpec(undefined);
-	}
+	}, [projectId, queryClient, selectedSpec]);
+
+	
+
+	const handleSpecGenerationRunStarted = useCallback((nextRunId: string, nextPublicToken: string) => {
+		setSpecRunId(nextRunId);
+		setSpecPublicToken(nextPublicToken);
+	}, []);
+
+	
+
+	const handleSpecGenerationError = useCallback(async (message: string) => {
+		setSendError(message);
+		await pushChatMessage({
+			sender: {
+				id: "flow-ai",
+				name: "Flow AI",
+			},
+			role: "assistant",
+			content: message,
+			timestamp: new Date().toISOString(),
+		});
+	}, [pushChatMessage]);
 
 	return (
 		<div
@@ -487,22 +527,8 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 						<SpecGenerationButton
 							projectId={projectId}
 							isSpecRunActive={isSpecRunActive}
-							onRunStarted={(nextRunId, nextPublicToken) => {
-								setSpecRunId(nextRunId);
-								setSpecPublicToken(nextPublicToken);
-							}}
-							onError={async (message) => {
-								setSendError(message);
-								await pushChatMessage({
-									sender: {
-										id: "flow-ai",
-										name: "Flow AI",
-									},
-									role: "assistant",
-									content: message,
-									timestamp: new Date().toISOString(),
-								});
-							}}
+							onRunStarted={handleSpecGenerationRunStarted}
+							onError={handleSpecGenerationError}
 						/>
 					) : (
 						<Button
@@ -637,22 +663,6 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 		</div>
 	);
 
-	async function pushChatMessage(payload: AiChatMessageData) {
-		try {
-			await createFeedMessage(
-				AI_CHAT_FEED_ID,
-				payload as unknown as JsonObject,
-				{
-					id: `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-					createdAt: Date.now(),
-				},
-			);
-			setSendError(undefined);
-		} catch (error) {
-			console.error("Failed to push ai-chat message", error);
-			setSendError("Chat feed write failed.");
-		}
-	}
 }
 
 function ChatMessages({
