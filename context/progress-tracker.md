@@ -601,6 +601,9 @@ change.
 - Performance Optimization:
   - Wrapped function props in `useCallback` inside heavy client interactive components (`editor-chrome.tsx`, `collaborative-canvas.tsx`, `ai-sidebar.tsx`) to ensure stable props and avoid unnecessary re-renders of children.
   - Fixed Rules of Hooks violation in `ai-sidebar.tsx` by moving conditionally rendered inline `useCallback` hooks (like `handleSpecGenerationRunStarted`) to the top-level of the component.
+- Current issue fixes:
+  - Wrapped optimistic project mutations and API fetch in a single async `startTransition` in `hooks/use-project-actions.ts` to prevent `useOptimistic` from reverting before the request completes.
+  - Simplified error recovery in optimistic project actions by relying on React's automatic `useOptimistic` state reversion and removing manual rollback dispatches, retaining only `router.replace` route restoration.
 
 ## In Progress
 

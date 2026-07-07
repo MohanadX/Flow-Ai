@@ -174,11 +174,12 @@ function ProjectItem({
 							variant="ghost"
 							size="icon"
 							className="h-7 w-7"
+							disabled
 						>
 							<Loader2 className="h-3.5 w-3.5 animate-spin" />
+							<span className="sr-only">Saving project</span>
 						</Button>
-					</div>
-				) : (
+					</div>				) : (
 				<div className="flex items-center gap-1 pr-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
 					<Button
 						variant="ghost"

@@ -130,43 +130,59 @@ export function useProjectActions({
 		[error],
 	);
 
-	const submit = useCallback(async () => {
+	const submit = useCallback(() => {
     if (loading || !dialogType) {
+        return;
+    }
+
+    let trimmedName = "";
+    try {
+        trimmedName = dialogType !== "delete" ? validateProjectName(name) : "";
+    } catch (err) {
+        setError(err instanceof Error ? err.message : "Invalid project name.");
         return;
     }
 
     setError(null);
     setLoading(true);
 
-    // Keep track of what we did so we know exactly what to roll back if things break
-    let appliedOptimisticType: "create" | "rename" | "delete" | null = null;
-    let fallbackProjectContext: Project | null = null;
-    let fallbackCreatedId = "";
+	// Close the modal immediately for snappier UX
+    close();
 
-    try {
-        //  pre-compute data
-        const trimmedName = dialogType !== "delete" ? validateProjectName(name) : "";
-        const targetProjectId = activeProject?.id;
-        
-        // Create a temporary mock project for the "create" action
-        const mockProjectId = dialogType === "create" ? createRoomId(trimmedName, roomSuffix) : "";
+    //  pre-compute data
+    const targetProjectId = activeProject?.id;
+    
+    // Create a temporary mock project for the "create" action
+    const mockProjectId = dialogType === "create" ? createRoomId(trimmedName, roomSuffix) : "";
 
-        const mockProject: Project = {
-            id: mockProjectId,
-            roomId: mockProjectId,
-            name: trimmedName,
-            slug: slugify(trimmedName) || "project",
-            ownerId: activeProject?.ownerId ?? "",
-            isOwner: true,
-            description: activeProject?.description ?? null,
-            status: activeProject?.status ?? "active",
-            canvasJsonPath: activeProject?.canvasJsonPath ?? null,
-            createdAt: activeProject?.createdAt ?? new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-        };
+    const mockProject: Project = {
+        id: mockProjectId,
+        roomId: mockProjectId,
+        name: trimmedName,
+        slug: slugify(trimmedName) || "project",
+        ownerId: activeProject?.ownerId ?? "",
+        isOwner: true,
+        description: activeProject?.description ?? null,
+        status: activeProject?.status ?? "active",
+        canvasJsonPath: activeProject?.canvasJsonPath ?? null,
+        createdAt: activeProject?.createdAt ?? new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+    };
 
-        //  dispatch optimistic updates first
-        startTransition(() => {
+    // Set mock project ID synchronously for immediate UI feedback outside of transition
+    const trackedId = dialogType === "create" ? mockProjectId : targetProjectId;
+    if (trackedId) {
+        setMockProjectId(trackedId);
+    }
+
+    startTransition(async () => {
+        // Keep track of what we did so we know exactly what to roll back if things break
+        let appliedOptimisticType: "create" | "rename" | "delete" | null = null;
+        let fallbackProjectContext: Project | null = null;
+        let fallbackCreatedId = "";
+
+        try {
+            //  dispatch optimistic updates first
             if (dialogType === "create") {
                 appliedOptimisticType = "create";
                 fallbackCreatedId = mockProjectId;
@@ -192,78 +208,59 @@ export function useProjectActions({
                     router.replace("/editor");
                 }
             }
-            // Close the modal immediately for snappier UX
-            close(); 
-        });
-
-		setMockProjectId((fallbackProjectContext as unknown as Project)?.id || fallbackCreatedId) // for tracking this project while loading state in project sidebar
-
-        //  fire the network request in the background
-        let response: Response;
-        if (dialogType === "create") {
-            response = await fetch("/api/projects", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ id: mockProjectId, name: trimmedName }),
-            });
-        } else if (dialogType === "rename" && targetProjectId) {
-            response = await fetch(`/api/projects/${targetProjectId}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: trimmedName }),
-            });
-        } else if (dialogType === "delete" && targetProjectId) {
-            response = await fetch(`/api/projects/${targetProjectId}`, {
-                method: "DELETE",
-            });
-        } else {
-            throw new Error("Invalid active project context for mutation.");
-        }
-
-        //  verify response 
-        const body = await parseProjectResponse(response);
-
-        // Replace the placeholder UI entry with the absolute truth from the server database
-        if (dialogType === "create" || dialogType === "rename") {
-            startTransition(() => {
-                dispatchOptimisticOwned({ type: "update", project: body.project });
-                router.refresh();
-            });
-        } else {
-            startTransition(() => {
-                router.refresh();
-            });
-        }
-
-    } catch (submitError) {
-        // Catch block: rollback all changes 
-        setError(
-            submitError instanceof Error ? submitError.message : "Something went wrong."
-        );
-
-        // Revert UI to original state based on the tracked failure context
-        startTransition(() => {
-            if (appliedOptimisticType === "create" && fallbackCreatedId) {
-                dispatchOptimisticOwned({ type: "remove", projectId: fallbackCreatedId });
-                router.replace("/editor"); 
-            } 
-            else if (appliedOptimisticType === "rename" && fallbackProjectContext) {
-                dispatchOptimisticOwned({ type: "update", project: fallbackProjectContext });
-            } 
-            else if (appliedOptimisticType === "delete" && fallbackProjectContext) {
-                dispatchOptimisticOwned({ type: "add", project: fallbackProjectContext });
-                
-                if (fallbackProjectContext.id === activeProjectId) {
-                    router.replace(`/editor/${fallbackProjectContext.id}`);
-                }
+ 
+            //  fire the network request in the background
+            let response: Response;
+            if (dialogType === "create") {
+                response = await fetch("/api/projects", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id: mockProjectId, name: trimmedName }),
+                });
+            } else if (dialogType === "rename" && targetProjectId) {
+                response = await fetch(`/api/projects/${targetProjectId}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name: trimmedName }),
+                });
+            } else if (dialogType === "delete" && targetProjectId) {
+                response = await fetch(`/api/projects/${targetProjectId}`, {
+                    method: "DELETE",
+                });
+            } else {
+                throw new Error("Invalid active project context for mutation.");
             }
-            router.refresh();
-        });
 
-    } finally {
-        setLoading(false);
-		setMockProjectId(null)
-    }
+            //  verify response 
+            const body = await parseProjectResponse(response);
+
+            // Replace the placeholder UI entry with the absolute truth from the server database
+            if (dialogType === "create" || dialogType === "rename") {
+                dispatchOptimisticOwned({ type: "update", project: body.project });
+            }
+            
+            router.refresh();
+
+        } catch (submitError) {
+            // Catch block: rollback all changes 
+            setError(
+                submitError instanceof Error ? submitError.message : "Something went wrong."
+            );
+            
+            // If deleting failed, restore path context
+            if (dialogType === "delete" && activeProject?.id === activeProjectId) {
+                router.replace(`/editor/${activeProject?.id}`);
+            }
+
+			if (dialogType === "create") {
+				router.replace(`/editor`);
+			}
+
+        } finally {
+            setLoading(false);
+            setMockProjectId(null);
+        }
+    });
 }, [
     activeProject,
     activeProjectId,
