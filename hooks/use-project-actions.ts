@@ -176,29 +176,18 @@ export function useProjectActions({
     }
 
     startTransition(async () => {
-        // Keep track of what we did so we know exactly what to roll back if things break
-        let appliedOptimisticType: "create" | "rename" | "delete" | null = null;
-        let fallbackProjectContext: Project | null = null;
-        let fallbackCreatedId = "";
-
         try {
             //  dispatch optimistic updates first
+			console.log(dialogType, name, activeProject)
             if (dialogType === "create") {
-                appliedOptimisticType = "create";
-                fallbackCreatedId = mockProjectId;
 
                 dispatchOptimisticOwned({ type: "add", project: mockProject });
                 router.push(`/editor/${mockProjectId}`);
             } 
             else if (dialogType === "rename" && activeProject) {
-                appliedOptimisticType = "rename";
-                fallbackProjectContext = { ...activeProject }; 
-                
                 dispatchOptimisticOwned({ type: "update", project: { ...activeProject, name: trimmedName } });
             } 
             else if (dialogType === "delete" && activeProject) {
-                appliedOptimisticType = "delete";
-                fallbackProjectContext = { ...activeProject };
 
                 dispatchOptimisticOwned({ type: "remove", projectId: targetProjectId! });
                 
@@ -232,10 +221,10 @@ export function useProjectActions({
             }
 
             //  verify response 
-            const body = await parseProjectResponse(response);
-
+			
             // Replace the placeholder UI entry with the absolute truth from the server database
             if (dialogType === "create" || dialogType === "rename") {
+				const body = await parseProjectResponse(response);
                 dispatchOptimisticOwned({ type: "update", project: body.project });
             }
             
@@ -243,6 +232,19 @@ export function useProjectActions({
 
         } catch (submitError) {
             // Catch block: rollback all changes 
+			
+			// open dialog to show user the error
+			switch (dialogType) {
+				case "create":
+					openCreate();
+					break;
+				case "rename":
+					openRename(activeProject!);
+					break;
+				case "delete":
+					openDelete(activeProject!);
+					break;
+			}
             setError(
                 submitError instanceof Error ? submitError.message : "Something went wrong."
             );
@@ -273,6 +275,9 @@ export function useProjectActions({
     router,
     startTransition,
     dispatchOptimisticOwned,
+    openCreate,
+    openRename,
+    openDelete,
 ]);
 
 	return {

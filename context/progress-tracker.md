@@ -604,6 +604,7 @@ change.
 - Current issue fixes:
   - Wrapped optimistic project mutations and API fetch in a single async `startTransition` in `hooks/use-project-actions.ts` to prevent `useOptimistic` from reverting before the request completes.
   - Simplified error recovery in optimistic project actions by relying on React's automatic `useOptimistic` state reversion and removing manual rollback dispatches, retaining only `router.replace` route restoration.
+  - Added error handling to automatically reopen the corresponding project dialog (create, rename, or delete) if an optimistic mutation fails, ensuring the user can see the error message.
 
 ## In Progress
 
