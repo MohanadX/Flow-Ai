@@ -632,3 +632,5 @@ change.
 - Next.js 16 route handlers require awaiting dynamic `params`, so `/api/projects/[projectId]` uses promise-based route context parameters.
 - The required `context/architecture-context.md` file is currently named `context/architecture.md`; that file was used for architecture context in this feature.
 - `LIVEBLOCKS_SECRET_KEY` is required at runtime for `/api/liveblocks-auth`; the Liveblocks client is lazy so production builds do not fail during route module import.
+- Removed optimistic updates for `sharedProjects` in `hooks/use-project-actions.ts` since normal state works fine for shared projects without user action.
+- Implemented debounced collaborative canvas autosave using Vercel Blob persistence. Added `use-canvas-autosave` hook to track idle/saving/saved/error states and push snapshots to `/api/projects/[projectId]/canvas`.

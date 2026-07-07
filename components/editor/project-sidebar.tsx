@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, Plus, Trash2, X } from "lucide-react";
+import { Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,7 @@ interface ProjectSidebarProps {
 	ownedProjects: Project[];
 	sharedProjects: Project[];
 	activeProjectId?: string | null;
+	optimisticProjectId: string | null;
 	onNewProject: () => void;
 	onOpenProject: (project: Project) => void;
 	onRename: (project: Project) => void;
@@ -24,6 +25,7 @@ export function ProjectSidebar({
 	ownedProjects,
 	sharedProjects,
 	activeProjectId,
+	optimisticProjectId,
 	onNewProject,
 	onOpenProject,
 	onRename,
@@ -78,6 +80,7 @@ export function ProjectSidebar({
 											key={project.id}
 											project={project}
 											isActive={project.id === activeProjectId}
+											isOptimistic={project.id === optimisticProjectId}
 											onOpen={() => onOpenProject(project)}
 											onRename={() => onRename(project)}
 											onDelete={() => onDelete(project)}
@@ -99,6 +102,7 @@ export function ProjectSidebar({
 											key={project.id}
 											project={project}
 											isActive={project.id === activeProjectId}
+											isOptimistic={project.id === optimisticProjectId}
 											onOpen={() => onOpenProject(project)}
 										/>
 									))
@@ -133,12 +137,14 @@ export function ProjectSidebar({
 function ProjectItem({
 	project,
 	isActive,
+	isOptimistic,
 	onOpen,
 	onRename,
 	onDelete,
 }: {
 	project: Project;
 	isActive: boolean;
+	isOptimistic: boolean;
 	onOpen: () => void;
 	onRename?: () => void;
 	onDelete?: () => void;
@@ -160,7 +166,19 @@ function ProjectItem({
 				{project.name}
 			</button>
 
+			{/* if project is optimistically created it mean it is not yet saved to the database so we shouldn't show the delete and rename buttons */}
 			{project.isOwner && (
+				isOptimistic ? (
+					<div className="flex items-center gap-1 pr-2">
+						<Button
+							variant="ghost"
+							size="icon"
+							className="h-7 w-7"
+						>
+							<Loader2 className="h-3.5 w-3.5 animate-spin" />
+						</Button>
+					</div>
+				) : (
 				<div className="flex items-center gap-1 pr-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
 					<Button
 						variant="ghost"
@@ -187,7 +205,7 @@ function ProjectItem({
 						<span className="sr-only">Delete</span>
 					</Button>
 				</div>
-			)}
+			))}
 		</div>
 	);
 }

@@ -90,6 +90,7 @@ export function EditorChrome({
 
 	const [isAiSidebarMounted, setIsAiSidebarMounted] = useState(false)
 	const [isShareOpen, setIsShareOpen] = useState(false);
+	const [isShareDialogMounted, setIsShareDialogMounted] = useState(false);
 	/** Latest AI status text from the ai-status-feed. Undefined = no active generation. */
 	const [sharedAiStatus, setSharedAiStatus] = useState<string | undefined>();
 
@@ -107,7 +108,10 @@ export function EditorChrome({
 		setIsAiSidebarMounted(true);
 		setIsAiSidebarOpen((prev) => !prev);
 	}, []);
-	const handleShare = useCallback(() => setIsShareOpen(true), []);
+	const handleShare = useCallback(() => {
+		setIsShareDialogMounted(true)
+		setIsShareOpen(true)
+	}, []);
 	const closeSidebar = useCallback(() => setIsSidebarOpen(false), []);
 	const closeAiSidebar = useCallback(() => setIsAiSidebarOpen(false), []);
 
@@ -161,6 +165,7 @@ export function EditorChrome({
 						<ProjectSidebar
 							isOpen={isSidebarOpen}
 							onClose={closeSidebar}
+							optimisticProjectId={projectActions.mockProjectId}
 							ownedProjects={projectActions.ownedProjects}
 							sharedProjects={projectActions.sharedProjects}
 							activeProjectId={activeProjectId}
@@ -169,8 +174,10 @@ export function EditorChrome({
 							onRename={projectActions.openRename}
 							onDelete={projectActions.openDelete}
 						/>
-						<ProjectDialogs {...projectActions} />
-						{activeProject && (
+						{projectActions.dialogType && (
+							<ProjectDialogs {...projectActions} />
+						)}
+						{isShareDialogMounted && activeProject && (
 							<ShareDialog
 								open={isShareOpen}
 								onOpenChange={setIsShareOpen}
