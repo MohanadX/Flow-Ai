@@ -30,5 +30,12 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules"],
+
+  "noUncheckedIndexAccess": true,      // Catch missing array/object index references
+  "allowUnreachableCode": false,       // Block dead/unreachable code builds
+  "noImplicitReturns": true,           // Ensure all code paths return a value
+  "noUnusedLocals": true,              // Flag unused local variables
+  "noUnusedParameters": true,          // Flag unused function arguments
+  "noFallthroughCasesInSwitch": true   // Stop switch blocks from bleeding down
 }
