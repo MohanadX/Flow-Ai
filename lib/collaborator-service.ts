@@ -6,6 +6,7 @@ import { ApiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { pusherServer } from "./pusher-server";
 import { serializeProject } from "./project-service";
+import { getUserProjectsChannel } from "@/lib/utils";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CLERK_USER_LIST_LIMIT = 500;
@@ -159,7 +160,7 @@ export async function addCollaborator(
 		try {
 			const serializedProject = serializeProject(project, ""); // pass empty string for currentUserId so isOwner is false
 			await pusherServer.trigger(
-				`projects-user-${email}`,
+				getUserProjectsChannel(email),
 				"project-shared",
 				{ project: serializedProject }
 			);

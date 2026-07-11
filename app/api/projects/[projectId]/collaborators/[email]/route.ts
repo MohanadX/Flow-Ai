@@ -5,6 +5,7 @@ import {
 	removeCollaborator,
 } from "@/lib/collaborator-service";
 import { pusherServer } from "@/lib/pusher-server";
+import { getUserProjectsChannel } from "@/lib/utils";
 
 interface CollaboratorItemRouteContext {
 	params: Promise<{ projectId: string; email: string }>;
@@ -26,7 +27,7 @@ export async function DELETE(
 		// pusher live update
 
 		pusherServer.trigger(
-			`projects-user-${decodedEmail}`,
+			getUserProjectsChannel(decodedEmail),
 			"project-removed",
 			{ id: projectId }
 		)

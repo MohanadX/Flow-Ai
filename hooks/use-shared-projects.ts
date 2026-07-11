@@ -5,6 +5,7 @@ import type { Project } from "@/types/project";
 import { useEffect } from "react";
 import Pusher from "pusher-js";
 import { clientEnv } from "@/env/client";
+import { getUserProjectsChannel } from "@/lib/utils";
 
 export const sharedProjectKeys = {
 	all: () => ["shared-projects"] as const,
@@ -42,7 +43,7 @@ export function usePusherSync (userEmail: string) {
 		})
 
 		// Subscribe to your target channel
-		const channel = pusher.subscribe(`projects-user-${userEmail}`)
+		const channel = pusher.subscribe(getUserProjectsChannel(userEmail))
 
 		// bind to a specific event
 
