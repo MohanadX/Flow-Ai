@@ -178,7 +178,6 @@ export function useProjectActions({
     startTransition(async () => {
         try {
             //  dispatch optimistic updates first
-			console.log(dialogType, name, activeProject)
             if (dialogType === "create") {
 
                 dispatchOptimisticOwned({ type: "add", project: mockProject });
