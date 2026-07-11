@@ -4,6 +4,8 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { Liveblocks } from "@liveblocks/node";
 import { mutateFlow } from "@liveblocks/react-flow/node";
 import { z } from "zod";
+
+import { serverEnv } from "@/env/server";
 import {
 	CANVAS_EDGE_TYPE,
 	CANVAS_NODE_TYPE,
@@ -161,12 +163,7 @@ export const designAgentTask = task({
 	maxDuration: 300,
 	run: async (payload: DesignAgentPayload) => {
 		const { prompt, roomId } = payload;
-		const secret = process.env.LIVEBLOCKS_SECRET_KEY;
-
-		if (!secret) {
-			throw new Error("LIVEBLOCKS_SECRET_KEY is required for design-agent.");
-		}
-		const liveblocksSecret = secret;
+		const liveblocksSecret = serverEnv.LIVEBLOCKS_SECRET_KEY;
 
 		metadata.set("statusMessage", "Starting AI Architect...");
 
@@ -237,7 +234,7 @@ export const designAgentTask = task({
 		await setPresence(true, "Designing new system components...", 60);
 
 		const google = createGoogleGenerativeAI({
-			apiKey: process.env.GOOGLE_AI_API_KEY!,
+			apiKey: serverEnv.GOOGLE_AI_API_KEY,
 		});
 
 		const result = await generateText({

@@ -352,7 +352,7 @@ function isProjectIdConflict(error: unknown): boolean {
 	return target === "id";
 }
 
-function serializeProject(
+export function serializeProject(
 	project: PrismaProject,
 	currentUserId: string,
 ): ProjectDto {

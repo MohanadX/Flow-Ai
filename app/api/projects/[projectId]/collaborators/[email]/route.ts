@@ -4,6 +4,8 @@ import {
 	assertProjectOwner,
 	removeCollaborator,
 } from "@/lib/collaborator-service";
+import { pusherServer } from "@/lib/pusher-server";
+import { getUserProjectsChannel } from "@/lib/utils";
 
 interface CollaboratorItemRouteContext {
 	params: Promise<{ projectId: string; email: string }>;
@@ -21,6 +23,14 @@ export async function DELETE(
 
 		const decodedEmail = decodeURIComponent(email); // to decode the url email special characters encoding
 		await removeCollaborator(projectId, decodedEmail);
+
+		// pusher live update
+
+		pusherServer.trigger(
+			getUserProjectsChannel(decodedEmail),
+			"project-removed",
+			{ id: projectId }
+		)
 
 		return Response.json({ success: true });
 	} catch (error) {

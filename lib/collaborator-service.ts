@@ -4,6 +4,9 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { Prisma } from "@/app/generated/prisma/client";
 import { ApiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { pusherServer } from "./pusher-server";
+import { serializeProject } from "./project-service";
+import { getUserProjectsChannel } from "@/lib/utils";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CLERK_USER_LIST_LIMIT = 500;
@@ -139,10 +142,9 @@ export async function addCollaborator(
 	projectId: string,
 	email: string,
 ): Promise<CollaboratorDto> {
-	// Check project exists and get owner email to prevent self-invite issues
+	// Check project exists to prevent self-invite issues and get full project data
 	const project = await prisma.project.findUnique({
 		where: { id: projectId },
-		select: { ownerId: true },
 	});
 	if (!project) {
 		throw new ApiError(404, "NOT_FOUND", "Project not found.");
@@ -152,7 +154,22 @@ export async function addCollaborator(
 		const collaborator = await prisma.projectCollaborator.create({
 			data: { projectId, email },
 		});
-		const [enriched] = await enrichCollaborators([collaborator]);
+		const enrichedRes = enrichCollaborators([collaborator]);
+
+		// Trigger live update 
+		try {
+			const serializedProject = serializeProject(project, ""); // pass empty string for currentUserId so isOwner is false
+			await pusherServer.trigger(
+				getUserProjectsChannel(email),
+				"project-shared",
+				{ project: serializedProject }
+			);
+		} catch (publishErr) {
+			// Don't fail the whole request if Pusher fails
+			console.error("Failed to broadcast project-shared event:", publishErr);
+		}
+
+		const [enriched] = await enrichedRes
 		return enriched;
 	} catch (err) {
 		if (

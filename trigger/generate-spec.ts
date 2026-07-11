@@ -2,6 +2,7 @@ import { metadata, queue, schemaTask } from "@trigger.dev/sdk";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText } from "ai";
 
+import { serverEnv } from "@/env/server";
 import {
 	generateSpecPayloadSchema,
 	type GenerateSpecPayload,
@@ -25,15 +26,11 @@ export const generateSpec = schemaTask({
 			);
 		}
 
-		if (!process.env.GOOGLE_AI_API_KEY) {
-			throw new Error("GOOGLE_AI_API_KEY is required for generate-spec.");
-		}
-
 		metadata.set("statusMessage", "Preparing canvas context...");
 		metadata.set("phase", "preparing");
 
 		const google = createGoogleGenerativeAI({
-			apiKey: process.env.GOOGLE_AI_API_KEY,
+			apiKey: serverEnv.GOOGLE_AI_API_KEY,
 		});
 
 		const canvasSummary = buildCanvasSummary(payload.nodes, payload.edges);

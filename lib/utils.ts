@@ -14,3 +14,7 @@ export function slugify(text: string): string {
     .replace(/--+/g, "-") // Replace multiple - with single -
     .replace(/^-+|-+$/g, ""); // Remove leading and trailing -
 }
+
+export function getUserProjectsChannel(email: string): string {
+  return `projects-user-${email.toLowerCase()}`;
+}

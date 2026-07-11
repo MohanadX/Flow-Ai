@@ -15,8 +15,11 @@ export default async function EditorLayout({
 		redirect("/sign-in");
 	}
 
-	const user = await getCachedClerkUser(userId);
-	const projectLists = await listProjectGroups(userId, user.emailAddresses);
+	const {emailAddresses, email} = await getCachedClerkUser(userId);
+	if (emailAddresses.length === 0 || !email) {
+		redirect("/sign-in")
+	}
+	const projectLists = await listProjectGroups(userId, emailAddresses);
 
-	return <EditorChrome {...projectLists}>{children}</EditorChrome>;
+	return <EditorChrome {...projectLists} userEmail={email}>{children}</EditorChrome>;
 }
