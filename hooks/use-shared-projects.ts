@@ -74,6 +74,7 @@ export function usePusherSync (userEmail: string) {
 			channel.unbind("project-shared")
 			channel.unbind("project-removed")
 			channel.unsubscribe()
+			pusher.disconnect()
 		}
 	}, [queryClient, userEmail])
 }
