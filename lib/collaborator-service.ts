@@ -7,28 +7,19 @@ import { prisma } from "@/lib/prisma";
 import { pusherServer } from "./pusher-server";
 import { serializeProject } from "./project-service";
 import { getUserProjectsChannel } from "@/lib/utils";
+import {
+	collaboratorsLimit,
+	type Collaborator,
+	type CollaboratorListResponse,
+	type Owner,
+} from "@/types/collaborator";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CLERK_USER_LIST_LIMIT = 500;
 
-export interface CollaboratorDto {
-	email: string;
-	name: string | null;
-	imageUrl: string | null;
-	addedAt: string;
-}
-
-export interface OwnerDto {
-	userId: string;
-	email: string;
-	name: string | null;
-	imageUrl: string | null;
-}
-
-export interface CollaboratorListDto {
-	owner: OwnerDto;
-	collaborators: CollaboratorDto[];
-}
+export type CollaboratorDto = Collaborator;
+export type OwnerDto = Owner;
+export type CollaboratorListDto = CollaboratorListResponse;
 
 export function normalizeCollaboratorEmail(email: unknown): string {
 	if (typeof email !== "string" || !email.trim()) {
@@ -64,15 +55,11 @@ export async function assertProjectOwner(
 export async function getCollaborators(
 	projectId: string,
 	userId: string,
+	page: number = 1,
 ): Promise<CollaboratorListDto> {
 	const project = await prisma.project.findUnique({
 		where: { id: projectId },
-		select: {
-			ownerId: true,
-			collaborators: {
-				orderBy: { createdAt: "asc" },
-			},
-		},
+		select: { ownerId: true },
 	});
 
 	if (!project) {
@@ -87,16 +74,30 @@ export async function getCollaborators(
 	);
 
 	const isOwner = project.ownerId === userId;
-	const isCollaborator = project.collaborators.some((c) =>
-		callerEmails.includes(c.email.toLowerCase()),
-	);
+	const collaboratorAccess = isOwner
+		? null
+		: await prisma.projectCollaborator.findFirst({
+				where: { projectId, email: { in: callerEmails } },
+				select: { id: true },
+			});
+	const isCollaborator = !!collaboratorAccess;
 
 	if (!isOwner && !isCollaborator) {
 		throw new ApiError(403, "FORBIDDEN", "Access denied.");
 	}
 
+	const [projectCollaborators, collaboratorCount] = await Promise.all([
+		prisma.projectCollaborator.findMany({
+			where: { projectId },
+			orderBy: { createdAt: "asc" },
+			take: collaboratorsLimit,
+			skip: (page - 1) * collaboratorsLimit,
+		}),
+		prisma.projectCollaborator.count({ where: { projectId } }),
+	]);
+
 	// Enrich owner and collaborators with Clerk profile data.
-	const collaboratorEmails = project.collaborators.map((c) => c.email);
+	const collaboratorEmails = projectCollaborators.map((c) => c.email);
 	const ownerClerkUser =
 		project.ownerId === userId
 			? callerUser
@@ -131,11 +132,11 @@ export async function getCollaborators(
 	};
 
 	const collaborators = await enrichCollaborators(
-		project.collaborators,
+		projectCollaborators,
 		collaboratorEmails.length > 0 ? client : null,
 	);
 
-	return { owner, collaborators };
+	return { owner, collaborators, collaboratorCount };
 }
 
 export async function addCollaborator(

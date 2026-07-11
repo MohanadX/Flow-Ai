@@ -13,13 +13,15 @@ interface CollaboratorRouteContext {
 
 // GET /api/projects/[projectId]/collaborators — list collaborators (owner + collaborators)
 export async function GET(
-	_request: Request,
+	request: Request,
 	{ params }: CollaboratorRouteContext,
 ) {
 	try {
+		const { searchParams } = new URL(request.url);
+		const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
 		const userId = await requireUserId();
 		const { projectId } = await params;
-		const result = await getCollaborators(projectId, userId);
+		const result = await getCollaborators(projectId, userId, page);
 
 		return Response.json(result);
 	} catch (error) {

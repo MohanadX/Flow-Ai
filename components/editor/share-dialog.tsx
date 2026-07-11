@@ -1,9 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	keepPreviousData,
+	useMutation,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import { Check, Copy, Loader2, Share2, Trash2, UserPlus } from "lucide-react";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -14,25 +20,13 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+	collaboratorsLimit,
+	type Collaborator,
+	type CollaboratorListResponse,
+} from "@/types/collaborator";
 
-interface Collaborator {
-	email: string;
-	name: string | null;
-	imageUrl: string | null;
-	addedAt: string;
-}
-
-interface Owner {
-	userId: string;
-	email: string;
-	name: string | null;
-	imageUrl: string | null;
-}
-
-interface CollaboratorListResponse {
-	owner: Owner;
-	collaborators: Collaborator[];
-}
+const Pagination = dynamic(() => import("./Pagination"));
 
 interface ShareDialogProps {
 	open: boolean;
@@ -44,14 +38,17 @@ interface ShareDialogProps {
 
 // ─── query key factory ────────────────────────────────────────────────────────
 const collaboratorKeys = {
-	list: (projectId: string) => ["collaborators", projectId] as const,
+	all: (projectId: string) => ["collaborators", projectId] as const,
+	list: (projectId: string, page: number) =>
+		["collaborators", projectId, page] as const,
 };
 
 // ─── fetch helpers ────────────────────────────────────────────────────────────
 async function fetchCollaborators(
 	projectId: string,
+	page: number,
 ): Promise<CollaboratorListResponse> {
-	const res = await fetch(`/api/projects/${projectId}/collaborators`);
+	const res = await fetch(`/api/projects/${projectId}/collaborators?page=${page}`);
 	if (!res.ok) {
 		const body = await res.json().catch(() => ({}));
 		throw new Error(body.error?.message ?? "Failed to load collaborators.");
@@ -132,21 +129,25 @@ export function ShareDialog({
 	const [inviteEmail, setInviteEmail] = useState("");
 	const [copied, setCopied] = useState(false);
 	const [mutationError, setMutationError] = useState<string | null>(null);
+	const [page, setPage] = useState(1);
 	const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	// ── list query ──────────────────────────────────────────────────────────
 	const {
 		data,
 		isLoading,
+		isFetching,
 		error: queryError,
 	} = useQuery({
-		queryKey: collaboratorKeys.list(projectId),
-		queryFn: () => fetchCollaborators(projectId),
+		queryKey: collaboratorKeys.list(projectId, page),
+		queryFn: () => fetchCollaborators(projectId, page),
+		placeholderData: keepPreviousData,
 		enabled: open,
 	});
 
 	const owner = data?.owner ?? null;
 	const collaborators = data?.collaborators ?? [];
+	const totalPages = Math.ceil((data?.collaboratorCount || 1) / collaboratorsLimit);
 
 	// ── invite mutation ─────────────────────────────────────────────────────
 	const inviteMutation = useMutation({
@@ -155,7 +156,7 @@ export function ShareDialog({
 			setInviteEmail("");
 			setMutationError(null);
 			queryClient.invalidateQueries({
-				queryKey: collaboratorKeys.list(projectId),
+				queryKey: collaboratorKeys.all(projectId),
 			});
 		},
 		onError: (err: Error) => {
@@ -167,9 +168,12 @@ export function ShareDialog({
 	const removeMutation = useMutation({
 		mutationFn: (email: string) => removeCollaborator(projectId, email),
 		onSuccess: () => {
+			if (collaborators.length === 1 && page > 1) {
+				setPage((currentPage) => Math.max(1, currentPage - 1));
+			}
 			setMutationError(null);
 			queryClient.invalidateQueries({
-				queryKey: collaboratorKeys.list(projectId),
+				queryKey: collaboratorKeys.all(projectId),
 			});
 		},
 		onError: (err: Error) => {
@@ -205,6 +209,13 @@ export function ShareDialog({
 		});
 	}
 
+	function handleOpenChange(nextOpen: boolean) {
+		if (!nextOpen) {
+			setPage(1);
+		}
+		onOpenChange(nextOpen);
+	}
+
 	useEffect(() => {
 		return () => {
 			if (copyTimeoutRef.current) {
@@ -217,7 +228,7 @@ export function ShareDialog({
 		mutationError ?? (queryError instanceof Error ? queryError.message : null);
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
+		<Dialog open={open} onOpenChange={handleOpenChange}>
 			<DialogContent className="sm:max-w-md bg-surface border-surface-border">
 				<DialogHeader>
 					<DialogTitle className="text-copy-primary flex items-center gap-2">
@@ -377,6 +388,19 @@ export function ShareDialog({
 								</li>
 							))}
 						</ul>
+					)}
+
+					{totalPages > 1 && (
+						<div className="mt-3 flex justify-center border-t border-surface-border pt-2 relative">
+							<Pagination
+								currentPage={page}
+								setPage={setPage}
+								totalPages={totalPages}
+							/>
+							{isFetching && (
+								<Loader2 className="w-4 h-4 animate-spin absolute right-2 top-1/2 -translate-y-1/2 text-copy-muted" />
+							)}
+						</div>
 					)}
 				</div>
 			</DialogContent>
