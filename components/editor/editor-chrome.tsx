@@ -14,7 +14,7 @@ import { EditorNavbar } from "@/components/editor/editor-navbar";
 import { ProjectSidebar } from "@/components/editor/project-sidebar";
 
 import { useProjectActions } from "@/hooks/use-project-actions";
-import { useSharedProjects } from "@/hooks/use-shared-projects";
+import { usePusherSync, useSharedProjects } from "@/hooks/use-shared-projects";
 import type { ProjectLists } from "@/types/project";
 import dynamic from "next/dynamic";
 
@@ -70,15 +70,18 @@ export function EditorChrome({
 	children,
 	ownedProjects,
 	sharedProjects,
+	userEmail
 }: {
 	children?: ReactNode;
-} & ProjectLists) {
+} & ProjectLists & {userEmail: string}) {
 	const params = useParams<{ projectId?: string }>();
 	const activeProjectId = params?.projectId ?? null;
 
 	// Keep shared projects fresh — re-fetches on window focus so invitees
 	// see newly-shared projects without a manual page reload.
 	const { data: liveSharedProjects } = useSharedProjects(sharedProjects);
+
+	usePusherSync(userEmail) // Sits in background listening for live changes
 
 	const projectActions = useProjectActions({
 		ownedProjects,

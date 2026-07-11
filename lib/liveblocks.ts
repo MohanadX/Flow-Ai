@@ -2,6 +2,8 @@ import "server-only";
 
 import { Liveblocks } from "@liveblocks/node";
 
+import { serverEnv } from "@/env/server";
+
 const CURSOR_COLORS = [
 	"#00c8d4",
 	"#6457f9",
@@ -16,15 +18,7 @@ const globalForLiveblocks = globalThis as typeof globalThis & {
 };
 
 function createLiveblocksClient(): Liveblocks {
-	const secret = process.env.LIVEBLOCKS_SECRET_KEY;
-
-	if (!secret) {
-		throw new Error(
-			"LIVEBLOCKS_SECRET_KEY is required to initialize Liveblocks.",
-		);
-	}
-
-	return new Liveblocks({ secret });
+	return new Liveblocks({ secret: serverEnv.LIVEBLOCKS_SECRET_KEY });
 }
 
 export function getLiveblocksClient(): Liveblocks {

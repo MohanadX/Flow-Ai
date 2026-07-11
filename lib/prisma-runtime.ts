@@ -3,6 +3,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PrismaClient } from "@/app/generated/prisma/client";
+import { serverEnv } from "@/env/server";
 
 const globalForPrisma = globalThis as typeof globalThis & {
 	prisma?: PrismaClient;
@@ -17,11 +18,7 @@ const PRISMA_MODEL_DELEGATES = [
 ] as const;
 
 function createPrismaClient() {
-	const databaseUrl = process.env.DATABASE_URL;
-
-	if (!databaseUrl) {
-		throw new Error("DATABASE_URL is required to initialize Prisma.");
-	}
+	const databaseUrl = serverEnv.DATABASE_URL;
 
 	if (
 		databaseUrl.startsWith("prisma://") ||

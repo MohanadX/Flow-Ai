@@ -1,7 +1,10 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Project } from "@/types/project";
+import { useEffect } from "react";
+import Pusher from "pusher-js";
+import { clientEnv } from "@/env/client";
 
 export const sharedProjectKeys = {
 	all: () => ["shared-projects"] as const,
@@ -26,7 +29,47 @@ export function useSharedProjects(initialData: Project[]) {
 		queryKey: sharedProjectKeys.all(),
 		queryFn: fetchSharedProjects,
 		initialData,
-		staleTime: 30_000,
-		refetchOnWindowFocus: true,
+		staleTime: Infinity,
 	});
+}
+
+
+export function usePusherSync (userEmail: string) {
+	const queryClient = useQueryClient()
+	useEffect(() => {
+		const pusher = new Pusher(clientEnv.NEXT_PUBLIC_PUSHER_KEY, {
+			cluster: clientEnv.NEXT_PUBLIC_PUSHER_CLUSTER,
+		})
+
+		// Subscribe to your target channel
+		const channel = pusher.subscribe(`projects-user-${userEmail}`)
+
+		// bind to a specific event
+
+		channel.bind("project-shared", (data: { project: Project }) => {
+			
+			queryClient.setQueriesData({ queryKey: sharedProjectKeys.all() }, (old: Project[]) => {
+				if (!old) return []; // on initial fetch if event fired
+				
+				// avoid duplicates (for websocket retries and race condition of share actions)
+				if (old.some(p => p.id === data.project.id)) return old;
+
+				return [...old, data.project]
+			})
+		});
+
+		channel.bind("project-removed", (data: { id: string }) => {
+			
+			queryClient.setQueriesData({ queryKey: sharedProjectKeys.all() }, (old: Project[]) => {
+				if (!old) return [];
+				return old.filter(p => p.id !== data.id);
+			})
+		})
+
+		return () => {
+			channel.unbind("project-shared")
+			channel.unbind("project-removed")
+			channel.unsubscribe()
+		}
+	}, [queryClient, userEmail])
 }
