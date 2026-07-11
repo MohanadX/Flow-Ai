@@ -131,6 +131,7 @@ function PaginationArrow({
 	) : (
 		<Button
 			className={className}
+			aria-label={direction === "left" ? "Previous page" : "Next page"}
 			onClick={() => {
 				setPage();
 			}}

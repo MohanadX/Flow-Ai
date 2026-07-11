@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	keepPreviousData,
 	useMutation,
@@ -209,12 +209,12 @@ export function ShareDialog({
 		});
 	}
 
-	function handleOpenChange(nextOpen: boolean) {
+	const handleOpenChange = useCallback((nextOpen: boolean) => {
 		if (!nextOpen) {
 			setPage(1);
 		}
 		onOpenChange(nextOpen);
-	}
+	},[onOpenChange])
 
 	useEffect(() => {
 		return () => {
