@@ -77,8 +77,8 @@ export function EditorChrome({
 	const params = useParams<{ projectId?: string }>();
 	const activeProjectId = params?.projectId ?? null;
 
-	// Keep shared projects fresh — re-fetches on window focus so invitees
-	// see newly-shared projects without a manual page reload.
+	// Keep shared projects fresh via Pusher websocket sync — invitees
+	// see newly-shared projects in real-time without a manual page reload.
 	const { data: liveSharedProjects } = useSharedProjects(sharedProjects);
 
 	usePusherSync(userEmail) // Sits in background listening for live changes
