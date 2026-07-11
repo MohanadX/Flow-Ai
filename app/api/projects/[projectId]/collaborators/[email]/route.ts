@@ -25,7 +25,7 @@ export async function DELETE(
 
 		// pusher live update
 
-		pusherServer.trigger(
+		await pusherServer.trigger(
 			`projects-user-${decodedEmail}`,
 			"project-removed",
 			{ id: projectId }
