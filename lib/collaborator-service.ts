@@ -57,6 +57,7 @@ export async function getCollaborators(
 	userId: string,
 	page: number = 1,
 ): Promise<CollaboratorListDto> {
+	if (page < 1) page = 1;
 	const project = await prisma.project.findUnique({
 		where: { id: projectId },
 		select: { ownerId: true },
