@@ -30,12 +30,12 @@ export function useSharedProjects(initialData: Project[]) {
 		queryKey: sharedProjectKeys.all(),
 		queryFn: fetchSharedProjects,
 		initialData,
-		staleTime: Infinity,
+		staleTime: 60 * 60 * 1000, // 60 minutes — websocket is primary, this is a safety net
 	});
 }
 
 
-export function usePusherSync (userEmail: string) {
+export function usePusherSync(userEmail: string) {
 	const queryClient = useQueryClient()
 	useEffect(() => {
 		const pusher = new Pusher(clientEnv.NEXT_PUBLIC_PUSHER_KEY, {
@@ -71,6 +71,7 @@ export function usePusherSync (userEmail: string) {
 			channel.unbind("project-shared")
 			channel.unbind("project-removed")
 			channel.unsubscribe()
+			pusher.disconnect()
 		}
 	}, [queryClient, userEmail])
 }
