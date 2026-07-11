@@ -29,8 +29,12 @@ export function useSharedProjects(initialData: Project[]) {
 		queryKey: sharedProjectKeys.all(),
 		queryFn: fetchSharedProjects,
 		initialData,
-		staleTime: Infinity,
-	});
+		return useQuery({
+			queryKey: sharedProjectKeys.all(),
+			queryFn: fetchSharedProjects,
+			initialData,
+			staleTime: 5 * 60 * 1000, // 5 minutes — websocket is primary, this is a safety net
+		});
 }
 
 
