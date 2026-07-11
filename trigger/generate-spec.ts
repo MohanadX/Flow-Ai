@@ -140,7 +140,7 @@ function buildChatSummary(
 function normalizeMarkdown(value: string): string {
 	const trimmed = value.trim();
 	const match = trimmed.match(/^```(?:markdown|md)?\s*([\s\S]*?)\s*```$/i);
-	return (match ? match[1] : trimmed).trim();
+	return (match?.[1] ?? trimmed).trim();
 }
 
 function normalizeInlineText(value: string): string {

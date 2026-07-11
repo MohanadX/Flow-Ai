@@ -326,7 +326,7 @@ You MUST reply with a JSON object that matches the following schema:
 
 function parseGeneratedArchitecture(rawText: string): GeneratedArchitecture {
 	const match = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-	const jsonString = match ? match[1] : rawText;
+	const jsonString = match?.[1] ?? rawText;
 	let parsed: unknown;
 
 	try {

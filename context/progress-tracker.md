@@ -615,6 +615,11 @@ change.
   - Updated `GET /api/projects/[projectId]/collaborators` and `lib/collaborator-service.ts` to return paginated collaborators plus `collaboratorCount` while keeping project access checks independent from the current page.
   - Updated `components/editor/share-dialog.tsx` to fetch collaborators by page with React Query `keepPreviousData`, invalidate all collaborator pages after invite/remove, and render the existing pagination control beneath the member list.
   - `npx tsc --noEmit`, `npm run lint`, and `npm run build` pass with zero errors.
+- Current issue fixes:
+  - Normalized the owned-projects `page` query parameter in `GET /api/projects` so non-numeric, zero, and negative values fall back to page 1 before calling `listProjects`.
+  - Moved the strict TypeScript safety flags from the root of `tsconfig.json` into `compilerOptions`, correcting `noUncheckedIndexAccess` to the real `noUncheckedIndexedAccess` compiler option.
+  - Added narrow undefined guards for regex captures, palette lookups, cursor colors, and collaborator enrichment so `noUncheckedIndexedAccess` passes under strict mode.
+  - `npx tsc --noEmit`, `npm run build`, and `npm run lint` pass with zero errors.
 
 ## In Progress
 

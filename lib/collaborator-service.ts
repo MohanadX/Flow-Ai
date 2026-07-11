@@ -171,6 +171,14 @@ export async function addCollaborator(
 		}
 
 		const [enriched] = await enrichedRes
+		if (!enriched) {
+			throw new ApiError(
+				500,
+				"COLLABORATOR_ENRICHMENT_FAILED",
+				"Failed to resolve the invited collaborator.",
+			);
+		}
+
 		return enriched;
 	} catch (err) {
 		if (
