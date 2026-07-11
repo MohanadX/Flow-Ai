@@ -31,6 +31,7 @@ Flow AI is a real-time collaborative systems architecture workspace powered by a
 
 - Prisma
 - Liveblocks
+- Websockets (Pusher)
 - Clerk Authentication
 - Trigger.dev
 - Vercel
