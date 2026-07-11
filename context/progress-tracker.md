@@ -605,6 +605,21 @@ change.
   - Wrapped optimistic project mutations and API fetch in a single async `startTransition` in `hooks/use-project-actions.ts` to prevent `useOptimistic` from reverting before the request completes.
   - Simplified error recovery in optimistic project actions by relying on React's automatic `useOptimistic` state reversion and removing manual rollback dispatches, retaining only `router.replace` route restoration.
   - Added error handling to automatically reopen the corresponding project dialog (create, rename, or delete) if an optimistic mutation fails, ensuring the user can see the error message.
+- Owned/shared project pagination:
+  - Added `components/editor/owned-projects.tsx` and `components/editor/shared-projects.tsx` to page sidebar project lists with TanStack React Query.
+  - Both lists use page-specific query keys, `keepPreviousData`, page 1 SSR `initialData`, and the shared `projectsLimit` count to calculate total pages.
+  - Added the reusable `components/editor/Pagination.tsx` control with previous/next arrows, generated page numbers, transition-wrapped page changes, and a small fetching spinner in each project list footer.
+  - Updated owned and shared project fetching routes/services to accept `page` and use Prisma `take`/`skip`, while `listProjectGroups` returns `ownedCount` and `sharedCount` for pagination totals.
+- Share dialog collaborator pagination:
+  - Added a shared collaborator response type and page size constant in `types/collaborator.ts`.
+  - Updated `GET /api/projects/[projectId]/collaborators` and `lib/collaborator-service.ts` to return paginated collaborators plus `collaboratorCount` while keeping project access checks independent from the current page.
+  - Updated `components/editor/share-dialog.tsx` to fetch collaborators by page with React Query `keepPreviousData`, invalidate all collaborator pages after invite/remove, and render the existing pagination control beneath the member list.
+  - `npx tsc --noEmit`, `npm run lint`, and `npm run build` pass with zero errors.
+- Current issue fixes:
+  - Normalized the owned-projects `page` query parameter in `GET /api/projects` so non-numeric, zero, and negative values fall back to page 1 before calling `listProjects`.
+  - Moved the strict TypeScript safety flags from the root of `tsconfig.json` into `compilerOptions`, correcting `noUncheckedIndexAccess` to the real `noUncheckedIndexedAccess` compiler option.
+  - Added narrow undefined guards for regex captures, palette lookups, cursor colors, and collaborator enrichment so `noUncheckedIndexedAccess` passes under strict mode.
+  - `npx tsc --noEmit`, `npm run build`, and `npm run lint` pass with zero errors.
 
 ## In Progress
 

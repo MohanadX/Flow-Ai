@@ -70,6 +70,8 @@ export function EditorChrome({
 	children,
 	ownedProjects,
 	sharedProjects,
+	ownedCount,
+	sharedCount,
 	userEmail
 }: {
 	children?: ReactNode;
@@ -88,7 +90,7 @@ export function EditorChrome({
 		sharedProjects: liveSharedProjects,
 		activeProjectId,
 	});
-	const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+	const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 	const [isAiSidebarOpen, setIsAiSidebarOpen] = useState(false);
 
 	const [isAiSidebarMounted, setIsAiSidebarMounted] = useState(false)
@@ -171,6 +173,8 @@ export function EditorChrome({
 							optimisticProjectId={projectActions.mockProjectId}
 							ownedProjects={projectActions.ownedProjects}
 							sharedProjects={projectActions.sharedProjects}
+							ownedCount={ownedCount}
+							sharedCount={sharedCount}
 							activeProjectId={activeProjectId}
 							onNewProject={projectActions.openCreate}
 							onOpenProject={projectActions.openProject}

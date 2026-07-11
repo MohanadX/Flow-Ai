@@ -1,16 +1,20 @@
 "use client";
 
-import { Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { Project } from "@/types/project";
+import OwnedProjects from "./owned-projects";
+import SharedProjects from "./shared-projects";
 
 interface ProjectSidebarProps {
 	isOpen: boolean;
 	onClose: () => void;
 	ownedProjects: Project[];
 	sharedProjects: Project[];
+	ownedCount: number;
+	sharedCount: number;
 	activeProjectId?: string | null;
 	optimisticProjectId: string | null;
 	onNewProject: () => void;
@@ -24,6 +28,8 @@ export function ProjectSidebar({
 	onClose,
 	ownedProjects,
 	sharedProjects,
+	ownedCount,
+	sharedCount,
 	activeProjectId,
 	optimisticProjectId,
 	onNewProject,
@@ -74,45 +80,24 @@ export function ProjectSidebar({
 							</TabsList>
 
 							<TabsContent value="my-projects" className="mt-4 space-y-1">
-								{ownedProjects.length > 0 ? (
-									ownedProjects.map((project) => (
-										<ProjectItem
-											key={project.id}
-											project={project}
-											isActive={project.id === activeProjectId}
-											isOptimistic={project.id === optimisticProjectId}
-											onOpen={() => onOpenProject(project)}
-											onRename={() => onRename(project)}
-											onDelete={() => onDelete(project)}
-										/>
-									))
-								) : (
-									<div className="flex flex-col items-center justify-center py-8 text-center">
-										<p className="text-sm text-muted-foreground">
-											No projects yet.
-										</p>
-									</div>
-								)}
+								<OwnedProjects 
+									ownedProjects={ownedProjects} 
+									ownedCount={ownedCount}
+									activeProjectId={activeProjectId} 
+									optimisticProjectId={optimisticProjectId} 
+									onOpenProject={onOpenProject} 
+									onRename={onRename} 
+									onDelete={onDelete}
+								/>
 							</TabsContent>
 
 							<TabsContent value="shared" className="mt-4 space-y-1">
-								{sharedProjects.length > 0 ? (
-									sharedProjects.map((project) => (
-										<ProjectItem
-											key={project.id}
-											project={project}
-											isActive={project.id === activeProjectId}
-											isOptimistic={project.id === optimisticProjectId}
-											onOpen={() => onOpenProject(project)}
-										/>
-									))
-								) : (
-									<div className="flex flex-col items-center justify-center py-8 text-center">
-										<p className="text-sm text-muted-foreground">
-											No shared projects.
-										</p>
-									</div>
-								)}
+								<SharedProjects
+									sharedProjects={sharedProjects} 
+									sharedCount={sharedCount}
+									activeProjectId={activeProjectId} 
+									onOpenProject={onOpenProject}
+								/>
 							</TabsContent>
 						</Tabs>
 					</div>
@@ -131,82 +116,5 @@ export function ProjectSidebar({
 				</div>
 			</div>
 		</>
-	);
-}
-
-function ProjectItem({
-	project,
-	isActive,
-	isOptimistic,
-	onOpen,
-	onRename,
-	onDelete,
-}: {
-	project: Project;
-	isActive: boolean;
-	isOptimistic: boolean;
-	onOpen: () => void;
-	onRename?: () => void;
-	onDelete?: () => void;
-}) {
-	return (
-		<div
-			className={cn(
-				"group flex items-center justify-between rounded-md text-sm transition-all hover:bg-subtle hover:text-copy-primary",
-				isActive
-					? "bg-brand/10 text-brand ring-1 ring-brand/30 shadow-[0_0_15px_var(--color-brand-dim)]"
-					: "text-copy-secondary",
-			)}
-		>
-			<button
-				type="button"
-				className="min-w-0 flex-1 truncate px-3 py-2 text-left"
-				onClick={onOpen}
-			>
-				{project.name}
-			</button>
-
-			{/* if project is optimistically created it mean it is not yet saved to the database so we shouldn't show the delete and rename buttons */}
-			{project.isOwner && (
-				isOptimistic ? (
-					<div className="flex items-center gap-1 pr-2">
-						<Button
-							variant="ghost"
-							size="icon"
-							className="h-7 w-7"
-							disabled
-						>
-							<Loader2 className="h-3.5 w-3.5 animate-spin" />
-							<span className="sr-only">Saving project</span>
-						</Button>
-					</div>				) : (
-				<div className="flex items-center gap-1 pr-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-					<Button
-						variant="ghost"
-						size="icon"
-						className="h-7 w-7"
-						onClick={(e) => {
-							e.stopPropagation();
-							onRename?.();
-						}}
-					>
-						<Pencil className="h-3.5 w-3.5" />
-						<span className="sr-only">Rename</span>
-					</Button>
-					<Button
-						variant="ghost"
-						size="icon"
-						className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
-						onClick={(e) => {
-							e.stopPropagation();
-							onDelete?.();
-						}}
-					>
-						<Trash2 className="h-3.5 w-3.5" />
-						<span className="sr-only">Delete</span>
-					</Button>
-				</div>
-			))}
-		</div>
 	);
 }

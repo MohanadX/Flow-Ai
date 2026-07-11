@@ -20,7 +20,7 @@ const nextConfig: NextConfig = {
 	},
 	poweredByHeader: false,
 	experimental: {
-		optimizePackageImports: ["lucide-react"],
+		optimizePackageImports: ["lucide-react", "@heroicons/react"],
 	},
 };
 

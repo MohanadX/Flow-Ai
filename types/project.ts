@@ -15,4 +15,8 @@ export interface Project {
 export interface ProjectLists {
 	ownedProjects: Project[];
 	sharedProjects: Project[];
+	ownedCount: number;
+	sharedCount: number;
 }
+
+export const projectsLimit = 7

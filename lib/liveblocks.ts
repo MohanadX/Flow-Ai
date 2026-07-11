@@ -42,5 +42,5 @@ export function getCursorColorForUser(userId: string): string {
 	}
 
 	// >>> 0 It guarantees:non-negative integer, consistent 32-bit overflow behavior
-	return CURSOR_COLORS[hash % CURSOR_COLORS.length];
+	return CURSOR_COLORS[hash % CURSOR_COLORS.length] ?? CURSOR_COLORS[0];
 }

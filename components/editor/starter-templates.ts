@@ -24,7 +24,7 @@ function createNode(
 	y: number,
 	colorIndex: number = 0,
 ): CanvasNode {
-	const palette = NODE_COLORS[colorIndex];
+	const palette = NODE_COLORS[colorIndex] ?? NODE_COLORS[0];
 	const size = SHAPE_DEFAULT_SIZES[shape];
 	return {
 		id,

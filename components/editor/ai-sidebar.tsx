@@ -1145,8 +1145,14 @@ function parseMarkdownBlocks(content: string): ReactNode[] {
 
 		const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/);
 		if (headingMatch) {
-			const level = headingMatch[1].length;
+			const headingMarks = headingMatch[1];
 			const text = headingMatch[2];
+			if (!headingMarks || !text) {
+				index += 1;
+				continue;
+			}
+
+			const level = headingMarks.length;
 			const className =
 				level === 1
 					? "text-xl font-semibold text-copy-primary"
@@ -1177,7 +1183,9 @@ function parseMarkdownBlocks(content: string): ReactNode[] {
 				if (!itemMatch) break;
 
 				items.push(
-					<li key={`item-${index}`}>{renderInlineMarkdown(itemMatch[1])}</li>,
+					<li key={`item-${index}`}>
+						{renderInlineMarkdown(itemMatch[1] ?? "")}
+					</li>,
 				);
 				index += 1;
 			}

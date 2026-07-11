@@ -10,7 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { getLiveblocksClient } from "@/lib/liveblocks";
 import { slugify } from "@/lib/utils";
 import { del } from "@vercel/blob";
-import type { Project, ProjectLists } from "@/types/project";
+import { projectsLimit, type Project, type ProjectLists } from "@/types/project";
 
 const DEFAULT_PROJECT_NAME = "Untitled Project";
 const PROJECT_NAME_MAX_LENGTH = 50;
@@ -54,44 +54,82 @@ export function normalizeCreateProjectId(
 	return validateProjectId(projectId.trim());
 }
 
-export async function listProjects(ownerId: string): Promise<ProjectDto[]> {
+export async function listProjects(ownerId: string, page: number = 1): Promise<ProjectDto[]> {
 	const projects = await prisma.project.findMany({
 		where: { ownerId },
 		orderBy: { createdAt: "desc" },
+		take: projectsLimit,
+		skip: (page - 1) * projectsLimit,
 	});
 
 	return projects.map((project) => serializeProject(project, ownerId));
-	// even though we already fetch projects by userId but for consistency we use ownerId
+}
+
+export async function listSharedProjects(
+	userId: string,
+	emailAddresses: string[],
+	page: number = 1
+): Promise<ProjectDto[]> {
+	const normalizedEmails = emailAddresses
+		.map((email) => email.trim().toLowerCase())
+		.filter(Boolean);
+
+	if (normalizedEmails.length === 0) return [];
+
+	const projects = await prisma.project.findMany({
+		where: {
+			ownerId: { not: userId },
+			collaborators: { some: { email: { in: normalizedEmails } } }
+		},
+		orderBy: { createdAt: "desc" },
+		take: projectsLimit,
+		skip: (page - 1) * projectsLimit,
+	});
+
+	return projects.map((project) => serializeProject(project, userId));
 }
 
 export async function listProjectGroups(
 	userId: string,
 	emailAddresses: string[],
+	ownedPage: number = 1,
+	sharedPage: number = 1
 ): Promise<ProjectLists> {
 	const normalizedEmails = emailAddresses
 		.map((email) => email.trim().toLowerCase())
 		.filter(Boolean);
-	// .filter((value) => Boolean(value))
 
-	const projects = await prisma.project.findMany({
-		where: {
-			OR: [
-				{ ownerId: userId },
-				...(normalizedEmails.length > 0
-					? [{ collaborators: { some: { email: { in: normalizedEmails } } } }]
-					: []),
-			],
-		},
-		orderBy: { createdAt: "desc" },
-	});
+	const sharedWhere = normalizedEmails.length > 0 ? {
+		ownerId: { not: userId },
+		collaborators: { some: { email: { in: normalizedEmails } } }
+	} : { id: { in: [] } };
 
-	const serializedProjects = projects.map((project) =>
-		serializeProject(project, userId),
-	);
+	const [ownedProjects, sharedProjects, ownedCount, sharedCount] = await Promise.all([
+		prisma.project.findMany({
+			where: { ownerId: userId },
+			orderBy: { createdAt: "desc" },
+			take: projectsLimit,
+			skip: (ownedPage - 1) * projectsLimit,
+		}),
+		prisma.project.findMany({
+			where: sharedWhere,
+			orderBy: { createdAt: "desc" },
+			take: projectsLimit,
+			skip: (sharedPage - 1) * projectsLimit,
+		}),
+		prisma.project.count({
+			where: { ownerId: userId },
+		}),
+		prisma.project.count({
+			where: sharedWhere,
+		}),
+	]);
 
 	return {
-		ownedProjects: serializedProjects.filter((project) => project.isOwner),
-		sharedProjects: serializedProjects.filter((project) => !project.isOwner),
+		ownedProjects: ownedProjects.map((project) => serializeProject(project, userId)),
+		sharedProjects: sharedProjects.map((project) => serializeProject(project, userId)),
+		ownedCount,
+		sharedCount,
 	};
 }
 

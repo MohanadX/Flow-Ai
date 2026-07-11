@@ -14,7 +14,7 @@ import type { Project, ProjectLists } from "@/types/project";
 
 export type ProjectDialogType = "create" | "rename" | "delete" | null;
 
-interface UseProjectActionsInput extends ProjectLists {
+interface UseProjectActionsInput extends Omit<ProjectLists, "ownedCount" | "sharedCount"> {
 	activeProjectId?: string | null;
 }
 

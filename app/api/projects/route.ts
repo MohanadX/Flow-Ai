@@ -7,10 +7,13 @@ import {
 	normalizeCreateProjectName,
 } from "@/lib/project-service";
 
-export async function GET() {
+export async function GET(request: Request) {
 	try {
+		const { searchParams } = new URL(request.url)
+		const parsedPage = Number.parseInt(searchParams.get("page") ?? "1", 10);
+		const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1; // safe guard
 		const userId = await requireUserId();
-		const projects = await listProjects(userId);
+		const projects = await listProjects(userId, page);
 
 		return Response.json({ projects });
 	} catch (error) {
