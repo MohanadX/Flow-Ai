@@ -90,6 +90,16 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 	const [selectedSpec, setSelectedSpec] = useState<
 		ProjectSpecListItem | undefined
 	>();
+	const [prevProjectId, setPrevProjectId] = useState(projectId);
+
+	if (projectId !== prevProjectId) {
+		setPrevProjectId(projectId);
+		setRunId(undefined);
+		setPublicToken(undefined);
+		setSpecRunId(undefined);
+		setSpecPublicToken(undefined);
+		setSelectedSpec(undefined);
+	}
 	// True once createFeed has resolved (success or already-exists), meaning the
 	// feed exists and useFeedMessages errors should be treated as real failures.
 	const [isFeedReady, setIsFeedReady] = useState(false);
@@ -132,6 +142,7 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 	});
 
 	useEffect(() => {
+		isMountedRef.current = true;
 		return () => {
 			isMountedRef.current = false;
 		};
@@ -864,6 +875,7 @@ function SpecGenerationButton({
 	const isSubmitting = submittingProjectId === projectId;
 
 	useEffect(() => {
+		isMountedRef.current = true;
 		return () => {
 			isMountedRef.current = false;
 		};

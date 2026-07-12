@@ -638,6 +638,10 @@ change.
   - Added `AbortController` cleanup for AI design prompt submission and spec generation start requests in `components/editor/ai-sidebar.tsx`, aborting on project changes or unmount.
   - Treated aborted requests as quiet exits so navigation does not show request errors or append failure messages to the shared AI chat.
   - `npx eslint components/editor/ai-sidebar.tsx lib/api-client.ts`, `npx tsc --noEmit`, and `npm run build` pass with zero errors.
+- AI sidebar transition & mount fixes:
+  - Restored `isMountedRef.current` to true at the start of effects in `AiSidebar` and `SpecGenerationButton` to properly handle React Strict Mode's setup–cleanup–setup cycle.
+  - Reset `runId`, `specRunId`, and `selectedSpec` in `AiSidebar` when `projectId` changes, stopping stale `RunTracker` completion callbacks from updating the new project's feed.
+  - Moved `projectId` transition state resets out of `useEffect` and into the render phase in `AiSidebar` to avoid cascading render warnings and follow React best practices for derived state.
 
 ## In Progress
 

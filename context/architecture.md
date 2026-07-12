@@ -2,10 +2,8 @@
 
 ## Stack
 
-| Layer | Technology |  
-Role |
-| ---------------- | ----------------------- | -------------------------------------------------------------- |
-| Framework | Next.js 16 + TypeScript | Full-stack app with server/client boundaries |
+| Layer | Technology | Role |
+| ---------------- | ----------------------- | -------------------------------------------------------------- || Framework | Next.js 16 + TypeScript | Full-stack app with server/client boundaries |
 | UI | Tailwind + shadcn/ui | Component composition and styling |
 | Auth | Clerk | User identity and route protection |
 | Database | Prisma + PostgreSQL | Relational metadata: projects, collaborators, specs, task runs |
