@@ -19,7 +19,7 @@ import {
 	useStatus,
 	useStorage,
 } from "@liveblocks/react";
-import { Bot, Download, FileText, Send, X, Loader2, Zap } from "lucide-react";
+import { Bot, Download, FileText, Send, X, Loader2, Zap, RefreshCw } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRealtimeRun } from "@trigger.dev/react-hooks";
 import { Button } from "@/components/ui/button";
@@ -103,6 +103,7 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 	// True once createFeed has resolved (success or already-exists), meaning the
 	// feed exists and useFeedMessages errors should be treated as real failures.
 	const [isFeedReady, setIsFeedReady] = useState(false);
+	const [chatRetryCount, setChatRetryCount] = useState(0);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const isMountedRef = useRef(true);
 	const submitAbortControllerRef = useRef<AbortController | null>(null);
@@ -498,12 +499,14 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 							</div>
 						) : (
 							<ChatMessages
+								key={chatRetryCount}
 								selfId={self?.id}
 								onPickStarterPrompt={(starterPrompt) => {
 									setPrompt(starterPrompt);
 									requestAnimationFrame(resizeTextarea);
 								}}
 								isInputLocked={isInputLocked}
+								onRetry={() => setChatRetryCount((c) => c + 1)}
 							/>
 						)}
 					</div>
@@ -710,10 +713,12 @@ function ChatMessages({
 	selfId,
 	onPickStarterPrompt,
 	isInputLocked,
+	onRetry,
 }: {
 	selfId: string | undefined;
 	onPickStarterPrompt: (prompt: string) => void;
 	isInputLocked: boolean;
+	onRetry: () => void;
 }) {
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const feedMessagesResult = useFeedMessages(AI_CHAT_FEED_ID, { limit: 100 });
@@ -760,8 +765,18 @@ function ChatMessages({
 
 	if (chatLoadError) {
 		return (
-			<div className="flex h-full items-center justify-center text-center text-xs text-error">
-				Chat messages could not be loaded.
+			<div className="flex h-full flex-col items-center justify-center gap-3 text-center text-xs">
+				<p className="text-error">Chat messages could not be loaded.</p>
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					onClick={onRetry}
+					className="h-8 gap-1.5"
+				>
+					<RefreshCw className="h-3.5 w-3.5" />
+					Retry
+				</Button>
 			</div>
 		);
 	}

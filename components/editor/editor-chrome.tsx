@@ -9,13 +9,16 @@ import {
 	useContext,
 } from "react";
 import { useParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { LiveblocksProvider, RoomProvider } from "@liveblocks/react";
 import { EditorNavbar } from "@/components/editor/editor-navbar";
 import { ProjectSidebar } from "@/components/editor/project-sidebar";
+import { apiClient } from "@/lib/api-client";
+import { Loader2 } from "lucide-react";
 
 import { useProjectActions } from "@/hooks/use-project-actions";
 import { usePusherSync, useSharedProjects } from "@/hooks/use-shared-projects";
-import type { ProjectLists } from "@/types/project";
+import type { Project, ProjectLists } from "@/types/project";
 import dynamic from "next/dynamic";
 
 const ProjectDialogs = dynamic(
@@ -72,7 +75,7 @@ export function EditorChrome({
 	sharedProjects,
 	ownedCount,
 	sharedCount,
-	userEmail
+	userEmail,
 }: {
 	children?: ReactNode;
 } & ProjectLists & {userEmail: string}) {
@@ -120,17 +123,42 @@ export function EditorChrome({
 	const closeSidebar = useCallback(() => setIsSidebarOpen(false), []);
 	const closeAiSidebar = useCallback(() => setIsAiSidebarOpen(false), []);
 
-	const activeProject = useMemo(() => {
+	// 1. Primary fallback: search the SSR list (covers page-1 projects + all shared projects)
+	const projectsList = useMemo(() => {
 		if (!activeProjectId) return null;
 		return [...ownedProjects, ...sharedProjects].find(
 			(p) => p.id === activeProjectId,
 		);
 	}, [activeProjectId, ownedProjects, sharedProjects]);
 
+	// 2. Secondary fallback: the hook's activeProject is set by openProject before navigation.
+	const foundInHook = projectActions.activeProject?.id === activeProjectId 
+		? projectActions.activeProject 
+		: null;
+
+	// 3. Last fallback: dynamic fetch via React Query for direct URL loads to page-2+ projects
+	const { data: fetchedProject, isFetching } = useQuery({
+		queryKey: ["project", activeProjectId],
+		queryFn: async ({ signal }) => {
+			const res = await apiClient.get<{ project: Project }>(`/api/projects/${activeProjectId}`, { signal });
+			return res.data.project;
+		},
+		enabled: !!activeProjectId && !projectsList && !foundInHook,
+	});
+
+	const activeProject = projectsList || foundInHook || fetchedProject || null;
+	const isProjectLoading = !!activeProjectId && !activeProject && isFetching;
+
 	const workspaceContent = (
 		<>
 			<main className="flex-1 justify-center flex overflow-hidden relative">
-				{children}
+				{isProjectLoading ? (
+					<div className="flex h-full w-full items-center justify-center">
+						<Loader2 className="h-6 w-6 animate-spin text-brand" />
+					</div>
+				) : (
+					children
+				)}
 			</main>
 			{activeProject && (
 				<>

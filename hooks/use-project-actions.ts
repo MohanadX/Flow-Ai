@@ -110,6 +110,7 @@ export function useProjectActions({
 
 	const openProject = useCallback(
 		(project: Project) => {
+			setActiveProject(project);
 			router.push(`/editor/${project.id}`);
 		},
 		[router],
