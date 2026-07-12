@@ -30,7 +30,7 @@ export default function ProjectItem({
 			<button
 				type="button"
 				className="min-w-0 flex-1 truncate px-3 py-2 text-left"
-				onClick={onOpen}
+				onClick={isActive ? undefined : onOpen}
 			>
 				{project.name}
 			</button>

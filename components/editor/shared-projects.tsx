@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
+import { apiClient, getApiClientErrorMessage } from "@/lib/api-client";
 
 const Pagination = dynamic(() => import("./Pagination"));
 
@@ -20,10 +21,16 @@ export default function SharedProjects({sharedProjects, sharedCount, activeProje
     const { data: projects, isFetching } = useQuery({
         queryKey: ["shared-projects-paginated", page],
         queryFn: async () => {
-            const res = await fetch(`/api/projects/shared?page=${page}`);
-            if (!res.ok) throw new Error("Failed to fetch shared projects");
-            const json = await res.json();
-            return json.projects as Project[];
+            try {
+                const { data } = await apiClient.get<{ projects: Project[] }>("/api/projects/shared", {
+                    params: { page },
+                });
+                return data.projects;
+            } catch (error) {
+                throw new Error(
+                    getApiClientErrorMessage(error) ?? "Failed to fetch shared projects",
+                );
+            }
         },
         placeholderData: keepPreviousData,
         initialData: page === 1 ? sharedProjects : undefined,

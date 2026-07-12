@@ -4,6 +4,7 @@ import dynamic from "next/dynamic"
 import { useQuery, keepPreviousData } from "@tanstack/react-query"
 import { useState } from "react"
 import { Loader2 } from "lucide-react"
+import { apiClient, getApiClientErrorMessage } from "@/lib/api-client"
 
 const Pagination = dynamic(() => import("./Pagination"))
 
@@ -24,10 +25,16 @@ export default function OwnedProjects ({ownedProjects, ownedCount, activeProject
     const { data: projects, isFetching } = useQuery({
     queryKey: ["owned-projects", page],
     queryFn: async () => {
-        const res = await fetch(`/api/projects?page=${page}`);
-        if (!res.ok) throw new Error("Failed to fetch owned projects");
-        const json = await res.json();
-        return json.projects as Project[];
+        try {
+            const { data } = await apiClient.get<{ projects: Project[] }>("/api/projects", {
+                params: { page },
+            });
+            return data.projects;
+        } catch (error) {
+            throw new Error(
+                getApiClientErrorMessage(error) ?? "Failed to fetch owned projects",
+            );
+        }
     },
     placeholderData: keepPreviousData,
     initialData: page === 1 ? ownedProjects : undefined,

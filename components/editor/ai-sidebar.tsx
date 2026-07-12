@@ -34,6 +34,11 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import {
+	apiClient,
+	getApiClientErrorMessage,
+	isApiClientRequestCanceled,
+} from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { useAiStatus } from "@/components/editor/editor-chrome";
 import {
@@ -74,7 +79,9 @@ const starterPrompts = [
 
 export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 	const [prompt, setPrompt] = useState("");
-	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [submittingProjectId, setSubmittingProjectId] = useState<
+		string | null
+	>(null);
 	const [sendError, setSendError] = useState<string | undefined>();
 	const [runId, setRunId] = useState<string | undefined>();
 	const [publicToken, setPublicToken] = useState<string | undefined>();
@@ -87,6 +94,8 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 	// feed exists and useFeedMessages errors should be treated as real failures.
 	const [isFeedReady, setIsFeedReady] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const isMountedRef = useRef(true);
+	const submitAbortControllerRef = useRef<AbortController | null>(null);
 	const queryClient = useQueryClient();
 	const self = useSelf();
 	const status = useStatus();
@@ -95,11 +104,12 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 
 	// Shared AI activity state from the Liveblocks ai-status-feed (visible to all participants).
 	const { sharedAiStatus } = useAiStatus();
+	const isSubmitting = submittingProjectId === projectId;
 	const isRunActive = !!runId;
 	const isSpecRunActive = !!specRunId;
 	const specsQuery = useQuery({
 		queryKey: specKeys.list(projectId),
-		queryFn: () => fetchProjectSpecs(projectId),
+		queryFn: ({ signal }) => fetchProjectSpecs(projectId, signal),
 		enabled: isOpen,
 	});
 	const selectedSpecDownloadUrl = selectedSpec
@@ -109,17 +119,30 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 		queryKey: selectedSpec
 			? specKeys.preview(projectId, selectedSpec.id)
 			: specKeys.preview(projectId, ""),
-		queryFn: () => {
+		queryFn: ({ signal }) => {
 			if (!selectedSpec) {
 				throw new Error("No spec selected.");
 			}
 
-			return fetchSpecMarkdown(projectId, selectedSpec.id);
+			return fetchSpecMarkdown(projectId, selectedSpec.id, signal);
 		},
 		enabled: !!selectedSpec,
 		gcTime: 0,
 		staleTime: 0,
 	});
+
+	useEffect(() => {
+		return () => {
+			isMountedRef.current = false;
+		};
+	}, []);
+
+	useEffect(() => {
+		return () => {
+			submitAbortControllerRef.current?.abort();
+			submitAbortControllerRef.current = null;
+		};
+	}, [projectId]);
 
 	useEffect(() => {
 		// Only attempt feed creation once the room WebSocket is fully connected.
@@ -181,8 +204,11 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 		const trimmed = prompt.trim();
 		if (!trimmed || isInputLocked) return;
 
-		setIsSubmitting(true);
+		setSubmittingProjectId(projectId);
 		setSendError(undefined);
+		submitAbortControllerRef.current?.abort();
+		const abortController = new AbortController();
+		submitAbortControllerRef.current = abortController;
 
 		requestAnimationFrame(() => {
 			const textarea = textareaRef.current;
@@ -203,26 +229,20 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 			};
 
 			await pushChatMessage(userPayload);
+			if (abortController.signal.aborted) return;
 
-			const designResponse = await fetch("/api/ai/design", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
+			const { data: designData } = await apiClient.post<{
+				runId?: unknown;
+				publicToken?: unknown;
+			}>(
+				"/api/ai/design",
+				{
 					prompt: trimmed,
 					roomId: projectId,
 					projectId,
-				}),
-			});
-
-			if (!designResponse.ok) {
-				const errorMessage = await readApiErrorMessage(designResponse);
-				throw new Error(errorMessage ?? "Design run could not be started.");
-			}
-
-			const designData = (await designResponse.json()) as {
-				runId?: unknown;
-				publicToken?: unknown;
-			};
+				},
+				{ signal: abortController.signal },
+			);
 			const nextRunId =
 				typeof designData.runId === "string" ? designData.runId : undefined;
 			const tokenFromDesign =
@@ -237,18 +257,11 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 			let nextPublicToken = tokenFromDesign;
 
 			if (!nextPublicToken) {
-				const tokenResponse = await fetch("/api/ai/design/token", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ runId: nextRunId }),
-				});
-
-				if (!tokenResponse.ok) {
-					const errorMessage = await readApiErrorMessage(tokenResponse);
-					throw new Error(errorMessage ?? "Run token could not be fetched.");
-				}
-
-				const tokenData = (await tokenResponse.json()) as { token?: unknown };
+				const { data: tokenData } = await apiClient.post<{ token?: unknown }>(
+					"/api/ai/design/token",
+					{ runId: nextRunId },
+					{ signal: abortController.signal },
+				);
 				nextPublicToken =
 					typeof tokenData.token === "string" ? tokenData.token : undefined;
 			}
@@ -257,13 +270,21 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 				throw new Error("Run public token is missing.");
 			}
 
+			if (abortController.signal.aborted) return;
 			setRunId(nextRunId);
 			setPublicToken(nextPublicToken);
 			setPrompt("");
 		} catch (err) {
+			if (
+				abortController.signal.aborted ||
+				isApiClientRequestCanceled(err)
+			) {
+				return;
+			}
+
 			console.error("Failed to submit AI prompt", err);
 			const errorText =
-				err instanceof Error ? err.message : "Message could not be sent.";
+				getApiClientErrorMessage(err) ?? "Message could not be sent.";
 			setSendError(errorText);
 
 			await pushChatMessage({
@@ -276,7 +297,16 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 				timestamp: new Date().toISOString(),
 			});
 		} finally {
-			setIsSubmitting(false);
+			if (submitAbortControllerRef.current === abortController) {
+				submitAbortControllerRef.current = null;
+			}
+			if (
+				isMountedRef.current &&
+				(submitAbortControllerRef.current === null ||
+					submitAbortControllerRef.current === abortController)
+			) {
+				setSubmittingProjectId(null);
+			}
 		}
 	}
 
@@ -797,7 +827,11 @@ function SpecGenerationButton({
 	onRunStarted: (runId: string, publicToken: string) => void;
 	onError: (message: string) => Promise<void>;
 }) {
-	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [submittingProjectId, setSubmittingProjectId] = useState<
+		string | null
+	>(null);
+	const isMountedRef = useRef(true);
+	const requestAbortControllerRef = useRef<AbortController | null>(null);
 	const nodes = useCanvasNodes();
 	const edges = useCanvasEdges();
 	const feedMessagesResult = useFeedMessages(AI_CHAT_FEED_ID, { limit: 100 });
@@ -827,11 +861,28 @@ function SpecGenerationButton({
 				return leftTime - rightTime;
 			});
 	}, [feedMessagesResult]);
+	const isSubmitting = submittingProjectId === projectId;
+
+	useEffect(() => {
+		return () => {
+			isMountedRef.current = false;
+		};
+	}, []);
+
+	useEffect(() => {
+		return () => {
+			requestAbortControllerRef.current?.abort();
+			requestAbortControllerRef.current = null;
+		};
+	}, [projectId]);
 
 	async function handleGenerateSpec() {
 		if (isSubmitting || isSpecRunActive) return;
 
-		setIsSubmitting(true);
+		setSubmittingProjectId(projectId);
+		requestAbortControllerRef.current?.abort();
+		const abortController = new AbortController();
+		requestAbortControllerRef.current = abortController;
 
 		try {
 			const payload: GenerateSpecRequest = {
@@ -840,18 +891,11 @@ function SpecGenerationButton({
 				nodes,
 				edges,
 			};
-			const specResponse = await fetch("/api/ai/spec", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(payload),
-			});
-
-			if (!specResponse.ok) {
-				const errorMessage = await readApiErrorMessage(specResponse);
-				throw new Error(errorMessage ?? "Spec run could not be started.");
-			}
-
-			const specData = (await specResponse.json()) as { runId?: unknown };
+			const { data: specData } = await apiClient.post<{ runId?: unknown }>(
+				"/api/ai/spec",
+				payload,
+				{ signal: abortController.signal },
+			);
 			const nextRunId =
 				typeof specData.runId === "string" ? specData.runId : undefined;
 
@@ -859,18 +903,11 @@ function SpecGenerationButton({
 				throw new Error("Spec run id is missing from API response.");
 			}
 
-			const tokenResponse = await fetch("/api/ai/spec/token", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ runId: nextRunId }),
-			});
-
-			if (!tokenResponse.ok) {
-				const errorMessage = await readApiErrorMessage(tokenResponse);
-				throw new Error(errorMessage ?? "Spec run token could not be fetched.");
-			}
-
-			const tokenData = (await tokenResponse.json()) as { token?: unknown };
+			const { data: tokenData } = await apiClient.post<{ token?: unknown }>(
+				"/api/ai/spec/token",
+				{ runId: nextRunId },
+				{ signal: abortController.signal },
+			);
 			const nextPublicToken =
 				typeof tokenData.token === "string" ? tokenData.token : undefined;
 
@@ -878,16 +915,32 @@ function SpecGenerationButton({
 				throw new Error("Spec run public token is missing.");
 			}
 
+			if (abortController.signal.aborted) return;
 			onRunStarted(nextRunId, nextPublicToken);
 		} catch (error) {
+			if (
+				abortController.signal.aborted ||
+				isApiClientRequestCanceled(error)
+			) {
+				return;
+			}
+
 			console.error("Failed to generate spec", error);
 			const message =
-				error instanceof Error
-					? error.message
-					: "Spec generation could not be started.";
+				getApiClientErrorMessage(error) ??
+				"Spec generation could not be started.";
 			await onError(message);
 		} finally {
-			setIsSubmitting(false);
+			if (requestAbortControllerRef.current === abortController) {
+				requestAbortControllerRef.current = null;
+			}
+			if (
+				isMountedRef.current &&
+				(requestAbortControllerRef.current === null ||
+					requestAbortControllerRef.current === abortController)
+			) {
+				setSubmittingProjectId(null);
+			}
 		}
 	}
 
@@ -1003,20 +1056,6 @@ function useCanvasEdges(): CanvasEdge[] {
 	}, [edgesMap]);
 }
 
-async function readApiErrorMessage(
-	response: Response,
-): Promise<string | undefined> {
-	try {
-		const body = (await response.json()) as {
-			error?: { message?: unknown };
-		};
-		const message = body.error?.message;
-		return typeof message === "string" ? message : undefined;
-	} catch {
-		return undefined;
-	}
-}
-
 const specKeys = {
 	list: (projectId: string) => ["project-specs", projectId] as const,
 	preview: (projectId: string, specId: string) =>
@@ -1025,17 +1064,22 @@ const specKeys = {
 
 async function fetchProjectSpecs(
 	projectId: string,
+	signal?: AbortSignal,
 ): Promise<ProjectSpecListItem[]> {
-	const response = await fetch(
-		`/api/projects/${encodeURIComponent(projectId)}/specs`,
-	);
+	let body: { specs?: unknown };
+	try {
+		const response = await apiClient.get<{ specs?: unknown }>(
+			`/api/projects/${encodeURIComponent(projectId)}/specs`,
+			{ signal },
+		);
+		body = response.data;
+	} catch (error) {
+		if (isApiClientRequestCanceled(error)) throw error;
 
-	if (!response.ok) {
-		const errorMessage = await readApiErrorMessage(response);
-		throw new Error(errorMessage ?? "Specs could not be loaded.");
+		throw new Error(
+			getApiClientErrorMessage(error) ?? "Specs could not be loaded.",
+		);
 	}
-
-	const body = (await response.json()) as { specs?: unknown };
 
 	if (!Array.isArray(body.specs)) {
 		throw new Error("Specs response is invalid.");
@@ -1047,15 +1091,21 @@ async function fetchProjectSpecs(
 async function fetchSpecMarkdown(
 	projectId: string,
 	specId: string,
+	signal?: AbortSignal,
 ): Promise<string> {
-	const response = await fetch(getSpecDownloadUrl(projectId, specId));
+	try {
+		const { data } = await apiClient.get<string>(
+			getSpecDownloadUrl(projectId, specId),
+			{ responseType: "text", signal },
+		);
+		return data;
+	} catch (error) {
+		if (isApiClientRequestCanceled(error)) throw error;
 
-	if (!response.ok) {
-		const errorMessage = await readApiErrorMessage(response);
-		throw new Error(errorMessage ?? "Spec preview could not be loaded.");
+		throw new Error(
+			getApiClientErrorMessage(error) ?? "Spec preview could not be loaded.",
+		);
 	}
-
-	return response.text();
 }
 
 function isProjectSpecListItem(value: unknown): value is ProjectSpecListItem {

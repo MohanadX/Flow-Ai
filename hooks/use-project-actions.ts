@@ -9,6 +9,7 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
+import { apiClient, getApiClientErrorMessage } from "@/lib/api-client";
 import { slugify } from "@/lib/utils";
 import type { Project, ProjectLists } from "@/types/project";
 
@@ -20,12 +21,6 @@ interface UseProjectActionsInput extends Omit<ProjectLists, "ownedCount" | "shar
 
 interface ProjectResponseBody {
 	project: Project;
-}
-
-interface ApiErrorResponseBody {
-	error?: {
-		message?: string;
-	};
 }
 
 type OptimisticAction =
@@ -198,23 +193,23 @@ export function useProjectActions({
             }
  
             //  fire the network request in the background
-            let response: Response;
+            let projectResponse: ProjectResponseBody | null = null;
             if (dialogType === "create") {
-                response = await fetch("/api/projects", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ id: mockProjectId, name: trimmedName }),
-                });
+                projectResponse = (
+                    await apiClient.post<ProjectResponseBody>("/api/projects", {
+                        id: mockProjectId,
+                        name: trimmedName,
+                    })
+                ).data;
             } else if (dialogType === "rename" && targetProjectId) {
-                response = await fetch(`/api/projects/${targetProjectId}`, {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ name: trimmedName }),
-                });
+                projectResponse = (
+                    await apiClient.patch<ProjectResponseBody>(
+                        `/api/projects/${targetProjectId}`,
+                        { name: trimmedName },
+                    )
+                ).data;
             } else if (dialogType === "delete" && targetProjectId) {
-                response = await fetch(`/api/projects/${targetProjectId}`, {
-                    method: "DELETE",
-                });
+                await apiClient.delete(`/api/projects/${targetProjectId}`);
             } else {
                 throw new Error("Invalid active project context for mutation.");
             }
@@ -223,8 +218,10 @@ export function useProjectActions({
 			
             // Replace the placeholder UI entry with the absolute truth from the server database
             if (dialogType === "create" || dialogType === "rename") {
-				const body = await parseProjectResponse(response);
-                dispatchOptimisticOwned({ type: "update", project: body.project });
+                if (!projectResponse?.project) {
+                    throw new Error("Unexpected project API response.");
+                }
+                dispatchOptimisticOwned({ type: "update", project: projectResponse.project });
             }
             
             router.refresh();
@@ -243,9 +240,9 @@ export function useProjectActions({
 				case "delete":
 					openDelete(activeProject!);
 					break;
-			}
+            }
             setError(
-                submitError instanceof Error ? submitError.message : "Something went wrong."
+                getApiClientErrorMessage(submitError) ?? "Something went wrong."
             );
             
             // If deleting failed, restore path context
@@ -272,7 +269,6 @@ export function useProjectActions({
     pathname,
     roomSuffix,
     router,
-    startTransition,
     dispatchOptimisticOwned,
     openCreate,
     openRename,
@@ -340,37 +336,3 @@ function generateShortSuffix(): string {
 		.padEnd(ROOM_SUFFIX_LENGTH, "0");
 }
 
-async function parseProjectResponse(
-	response: Response,
-): Promise<ProjectResponseBody> {
-	const body: unknown = await response.json().catch(() => null);
-
-	if (!response.ok) {
-		throw new Error(readErrorMessage(body));
-	}
-
-	if (
-		typeof body === "object" &&
-		body !== null &&
-		"project" in body &&
-		typeof body.project === "object" &&
-		body.project !== null
-	) {
-		return body as ProjectResponseBody;
-	}
-
-	throw new Error("Unexpected project API response.");
-}
-
-function readErrorMessage(body: unknown): string {
-	const message =
-		typeof body === "object" && body !== null && "error" in body
-			? (body as ApiErrorResponseBody).error?.message
-			: undefined;
-
-	if (typeof message === "string") {
-		return message;
-	}
-
-	return "Project request failed.";
-}

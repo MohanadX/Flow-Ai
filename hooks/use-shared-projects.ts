@@ -5,6 +5,7 @@ import type { Project } from "@/types/project";
 import { useEffect } from "react";
 import Pusher from "pusher-js";
 import { clientEnv } from "@/env/client";
+import { apiClient, getApiClientErrorMessage } from "@/lib/api-client";
 import { getUserProjectsChannel } from "@/lib/utils";
 
 export const sharedProjectKeys = {
@@ -12,10 +13,16 @@ export const sharedProjectKeys = {
 };
 
 async function fetchSharedProjects(): Promise<Project[]> {
-	const res = await fetch("/api/projects/shared");
-	if (!res.ok) throw new Error("Failed to load shared projects.");
-	const data = await res.json();
-	return data.projects as Project[];
+	try {
+		const { data } = await apiClient.get<{ projects: Project[] }>(
+			"/api/projects/shared",
+		);
+		return data.projects;
+	} catch (error) {
+		throw new Error(
+			getApiClientErrorMessage(error) ?? "Failed to load shared projects.",
+		);
+	}
 }
 
 /**

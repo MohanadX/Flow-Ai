@@ -20,6 +20,7 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { apiClient, getApiClientErrorMessage } from "@/lib/api-client";
 import {
 	collaboratorsLimit,
 	type Collaborator,
@@ -48,42 +49,48 @@ async function fetchCollaborators(
 	projectId: string,
 	page: number,
 ): Promise<CollaboratorListResponse> {
-	const res = await fetch(`/api/projects/${projectId}/collaborators?page=${page}`);
-	if (!res.ok) {
-		const body = await res.json().catch(() => ({}));
-		throw new Error(body.error?.message ?? "Failed to load collaborators.");
+	try {
+		const { data } = await apiClient.get<CollaboratorListResponse>(
+			`/api/projects/${projectId}/collaborators`,
+			{ params: { page } },
+		);
+		return data;
+	} catch (error) {
+		throw new Error(
+			getApiClientErrorMessage(error) ?? "Failed to load collaborators.",
+		);
 	}
-	return res.json() as Promise<CollaboratorListResponse>;
 }
 
 async function inviteCollaborator(
 	projectId: string,
 	email: string,
 ): Promise<Collaborator> {
-	const res = await fetch(`/api/projects/${projectId}/collaborators`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ email }),
-	});
-	if (!res.ok) {
-		const body = await res.json().catch(() => ({}));
-		throw new Error(body.error?.message ?? "Failed to invite collaborator.");
+	try {
+		const { data } = await apiClient.post<{ collaborator: Collaborator }>(
+			`/api/projects/${projectId}/collaborators`,
+			{ email },
+		);
+		return data.collaborator;
+	} catch (error) {
+		throw new Error(
+			getApiClientErrorMessage(error) ?? "Failed to invite collaborator.",
+		);
 	}
-	const data = await res.json();
-	return data.collaborator as Collaborator;
 }
 
 async function removeCollaborator(
 	projectId: string,
 	email: string,
 ): Promise<void> {
-	const res = await fetch(
-		`/api/projects/${projectId}/collaborators/${encodeURIComponent(email)}`,
-		{ method: "DELETE" },
-	);
-	if (!res.ok) {
-		const body = await res.json().catch(() => ({}));
-		throw new Error(body.error?.message ?? "Failed to remove collaborator.");
+	try {
+		await apiClient.delete(
+			`/api/projects/${projectId}/collaborators/${encodeURIComponent(email)}`,
+		);
+	} catch (error) {
+		throw new Error(
+			getApiClientErrorMessage(error) ?? "Failed to remove collaborator.",
+		);
 	}
 }
 

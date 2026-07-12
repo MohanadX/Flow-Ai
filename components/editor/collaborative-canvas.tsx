@@ -67,6 +67,7 @@ import { CanvasEdgeRenderer } from "@/components/editor/canvas-edge";
 import { CanvasErrorBoundary } from "@/components/editor/canvas-error-boundary";
 import { PresenceAvatars } from "@/components/editor/presence-avatars";
 import { Button } from "@/components/ui/button";
+import { apiClient, getApiClientErrorMessage } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { useAiStatus } from "@/components/editor/editor-chrome";
 import {
@@ -237,22 +238,25 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 	useEffect(() => {
 		if (isCanvasLoadChecked) return;
 
-		const controller = new AbortController();
+		let isCurrentLoad = true;
+		let timeoutId: number | null = null;
+
+		const abortController = new AbortController();
+		const signal = abortController.signal;
 
 		async function loadSavedCanvas() {
 			try {
-				const response = await fetch(`/api/projects/${roomId}/canvas`, {
-					signal: controller.signal,
-				});
+				const { data } = await apiClient.get<unknown>(
+					`/api/projects/${roomId}/canvas`,
+					{
+						timeout: 60000, // 1 min
+						signal,
+					}
+				);
 
-				if (!response.ok) {
-					const body = await response.json().catch(() => null);
-					const message = getCanvasApiErrorMessage(body);
-					throw new Error(message ?? "Saved canvas could not be loaded.");
-				}
+				if (!isCurrentLoad) return;
 
-				const body: unknown = await response.json();
-				const snapshot = parseCanvasLoadResponse(body);
+				const snapshot = parseCanvasLoadResponse(data);
 				const latestCount = latestCanvasCountRef.current;
 
 				if (snapshot && latestCount.nodes === 0 && latestCount.edges === 0) {
@@ -274,21 +278,20 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 						);
 					}
 
-					window.setTimeout(() => {
+					timeoutId = window.setTimeout(() => {
 						reactFlowInstanceRef.current?.fitView({ duration: 350 });
 					}, 50);
 				}
 			} catch (error) {
-				if (controller.signal.aborted) return;
+				if (!isCurrentLoad) return;
 
 				console.error(error);
 				setLoadErrorMessage(
-					error instanceof Error
-						? error.message
-						: "Saved canvas could not be loaded.",
+					getApiClientErrorMessage(error) ??
+						"Saved canvas could not be loaded.",
 				);
 			} finally {
-				if (!controller.signal.aborted) {
+				if (isCurrentLoad) {
 					setIsCanvasLoadChecked(true);
 				}
 			}
@@ -296,7 +299,13 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 
 		void loadSavedCanvas();
 
-		return () => controller.abort();
+		return () => {
+			isCurrentLoad = false;
+			if (timeoutId) {
+				clearTimeout(timeoutId);
+			}
+			abortController.abort();
+		};
 	}, [
 		edges.length,
 		isCanvasLoadChecked,
@@ -1187,12 +1196,6 @@ function parseCanvasLoadResponse(value: unknown): CanvasSnapshot | null {
 	}
 
 	return value.canvas as unknown as CanvasSnapshot;
-}
-
-function getCanvasApiErrorMessage(value: unknown): string | null {
-	if (!isRecord(value) || !isRecord(value.error)) return null;
-
-	return typeof value.error.message === "string" ? value.error.message : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

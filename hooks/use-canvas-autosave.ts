@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { apiClient, getApiClientErrorMessage } from "@/lib/api-client";
 import type {
 	CanvasEdge,
 	CanvasNode,
@@ -43,41 +44,32 @@ export function useCanvasAutosave({
 
 		if (payload === lastPayloadRef.current) return;
 
-		let controller: AbortController | null = null;
+		let isCurrentSave = true;
 		const timeoutId = window.setTimeout(() => {
-			controller = new AbortController();
-
 			async function saveCanvas() {
 				setStatus("saving");
 				setErrorMessage(null);
 
 				try {
-					const response = await fetch(`/api/projects/${projectId}/canvas`, {
-						method: "PUT",
-						headers: {
-							"Content-Type": "application/json",
-						},
-						body: payload,
-						signal: controller?.signal,
-					});
+					const { data } = await apiClient.put<unknown>(
+						`/api/projects/${projectId}/canvas`,
+						{ nodes, edges },
+					);
 
-					if (!response.ok) {
-						const body = await response.json().catch(() => null);
-						const message = getErrorMessage(body);
-						throw new Error(message ?? "Canvas autosave failed.");
-					}
+					if (!isCurrentSave) return;
 
-					const body: unknown = await response.json();
-					const savedAt = getSavedAt(body);
+					const savedAt = getSavedAt(data);
 					lastPayloadRef.current = payload;
 					setLastSavedAt(savedAt);
 					setStatus("saved");
 				} catch (error) {
-					if (controller?.signal.aborted) return;
+					if (!isCurrentSave) return;
 
 					setStatus("error");
 					setErrorMessage(
-						error instanceof Error ? error.message : "Canvas autosave failed.",
+						getApiClientErrorMessage(error, {
+							timeoutMessage: "Canvas autosave timed out.",
+						}) ?? "Canvas autosave failed.",
 					);
 				}
 			}
@@ -86,8 +78,8 @@ export function useCanvasAutosave({
 		}, debounceMs);
 
 		return () => {
+			isCurrentSave = false;
 			window.clearTimeout(timeoutId);
-			controller?.abort();
 		};
 	}, [debounceMs, edges, enabled, nodes, projectId]);
 
@@ -104,12 +96,6 @@ function getSavedAt(value: unknown): string {
 	return typeof canvas.savedAt === "string"
 		? canvas.savedAt
 		: new Date().toISOString();
-}
-
-function getErrorMessage(value: unknown): string | null {
-	if (!isRecord(value) || !isRecord(value.error)) return null;
-
-	return typeof value.error.message === "string" ? value.error.message : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

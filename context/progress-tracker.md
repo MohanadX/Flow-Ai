@@ -624,6 +624,20 @@ change.
   - Reviewed the uncommented Trigger.dev machine sizing issue in `context/current-issues.md`.
   - Verified `trigger.config.ts` already sets a deterministic default machine with `machine: "small-1x"`, which is the supported top-level key in the installed Trigger.dev 4.4.6 types.
   - Marked the stale `defaultMachine` finding as skipped in `context/current-issues.md` because adding that key would not match the installed SDK contract.
+- Client API Axios timeout cleanup:
+  - Added `lib/api-client.ts` with a shared Axios instance, 10 second request timeout, and reusable API error extraction for JSON error envelopes and timeout failures.
+  - Updated `hooks/use-canvas-autosave.ts` to use the shared Axios client for canvas snapshot saves while preserving debounce behavior and stale-effect guarding.
+  - Converted collaborator API calls in `components/editor/share-dialog.tsx` (list, invite, remove) from `fetch` to the shared Axios client with timeout-backed error handling.
+  - Converted related client-owned internal API calls in `components/editor/owned-projects.tsx`, `components/editor/shared-projects.tsx`, `hooks/use-shared-projects.ts`, `hooks/use-project-actions.ts`, `components/editor/ai-sidebar.tsx`, and `components/editor/collaborative-canvas.tsx` to the shared Axios client.
+  - Left Next route handler `Request` parsing and server/background external HTTP calls unchanged because those are framework or server-boundary APIs, not client-side internal API fetches.
+  - Verified app-owned source no longer uses `fetch(` or `AbortController` outside generated/vendor/documentation files.
+  - `npx eslint` on the touched files, `npx tsc --noEmit`, `npm run build`, and `npm run lint` pass with zero errors.
+- AI sidebar request cancellation:
+  - Added shared Axios cancellation detection in `lib/api-client.ts`.
+  - Passed React Query `AbortSignal` values into the AI sidebar spec list and Markdown preview Axios requests so project navigation/unmount can cancel in-flight reads.
+  - Added `AbortController` cleanup for AI design prompt submission and spec generation start requests in `components/editor/ai-sidebar.tsx`, aborting on project changes or unmount.
+  - Treated aborted requests as quiet exits so navigation does not show request errors or append failure messages to the shared AI chat.
+  - `npx eslint components/editor/ai-sidebar.tsx lib/api-client.ts`, `npx tsc --noEmit`, and `npm run build` pass with zero errors.
 
 ## In Progress
 

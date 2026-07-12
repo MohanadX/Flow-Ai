@@ -2,16 +2,17 @@
 
 ## Stack
 
-| Layer            | Technology              | Role                                                           |
+| Layer | Technology |  
+Role |
 | ---------------- | ----------------------- | -------------------------------------------------------------- |
-| Framework        | Next.js 16 + TypeScript | Full-stack app with server/client boundaries                   |
-| UI               | Tailwind + shadcn/ui    | Component composition and styling                              |
-| Auth             | Clerk                   | User identity and route protection                             |
-| Database         | Prisma + PostgreSQL     | Relational metadata: projects, collaborators, specs, task runs |
-| Client fetching  | TanStack React Query    | Client-side data fetching, caching, and mutations              |
-| Canvas           | Liveblocks + React Flow | Real-time collaborative canvas, presence, and cursors          |
-| Background tasks | Trigger.dev             | Durable AI generation workflows                                |
-| Artifact storage | Vercel Blob             | Canvas snapshots and generated Markdown specs                  |
+| Framework | Next.js 16 + TypeScript | Full-stack app with server/client boundaries |
+| UI | Tailwind + shadcn/ui | Component composition and styling |
+| Auth | Clerk | User identity and route protection |
+| Database | Prisma + PostgreSQL | Relational metadata: projects, collaborators, specs, task runs |
+| Client fetching | TanStack React Query | Client-side data fetching, caching, and mutations |
+| Canvas | Liveblocks + React Flow | Real-time collaborative canvas, presence, and cursors |
+| Background tasks | Trigger.dev | Durable AI generation workflows |
+| Artifact storage | Vercel Blob | Canvas snapshots and generated Markdown specs |
 
 ## System Boundaries
 
