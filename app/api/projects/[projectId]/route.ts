@@ -14,7 +14,7 @@ interface ProjectRouteContext {
 	}>;
 }
 
-export async function GET({ params }: ProjectRouteContext) {
+export async function GET(_: Request, { params }: ProjectRouteContext) {
 	try {
 		const identity = await getCurrentIdentity();
 		if (!identity) {

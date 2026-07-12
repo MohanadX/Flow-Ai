@@ -646,8 +646,10 @@ change.
 - RoomProvider missing fix (page-2+ project navigation):
   - Root cause: `EditorChrome`'s `activeProject` `useMemo` searched only the SSR page-1 `ownedProjects` prop; clicking a page-2+ project returned `null`, so `RoomProvider` was never rendered and `CollaborativeCanvas` crashed with "RoomProvider is missing from the React tree."
   - Initial attempt (client-side only): `openProject` in `hooks/use-project-actions.ts` already calls `setActiveProject(project)` before `router.push`. Added a fallback in `EditorChrome`'s `activeProject` `useMemo` that checks `projectActions.activeProject` (the hook's own dialog-context state) when the list-search returns nothing and the IDs match. This handled sidebar clicks but not direct URL visits.
-  - Final fix (Option B): Fetched specific project data in parallel with `listProjectGroups` in `app/editor/layout.tsx`. Passed `activeProject` to `EditorChrome` as a server-provided prop, guaranteeing the provider always has the project context even on direct URL navigation to a page-2+ project.
-  - Wrapped `checkProjectAccess` in React `cache` and refactored it to take primitive arguments (`projectId`, `userId`, `email`) to automatically deduplicate the database query between `layout.tsx` and `page.tsx`
+  - Final fix (Option A + Race Condition handling): 
+    - Added a `GET` handler to `app/api/projects/[projectId]/route.ts` to return the serialized project. 
+    - Updated `EditorChrome` to use React Query's `useQuery` to fetch the project on demand when it's missing from the SSR lists and hook state.
+    - Fixed a race condition where the `[projectId]/page.tsx` server component (which mounts `CollaborativeCanvas`) would render *before* the React Query fetch completed. By temporarily swapping `children` for a loading spinner while `isFetching` is true, we guarantee `CollaborativeCanvas` cannot mount until the `RoomProvider` is fully established.
 
 ## In Progress
 
