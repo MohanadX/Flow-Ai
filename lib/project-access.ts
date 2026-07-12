@@ -14,8 +14,13 @@ export async function getCurrentIdentity(): Promise<Identity | null> {
   const { userId } = await auth();
   if (!userId) return null;
 
-  const cachedUser = await getCachedClerkUser(userId);
-  return { userId, email: cachedUser.email };
+  try {
+    const cachedUser = await getCachedClerkUser(userId);
+    return { userId, email: cachedUser.email };
+  } catch (error) {
+    console.error(error);
+    return { userId, email: null };
+  }
 }
 
 export async function checkProjectAccess(

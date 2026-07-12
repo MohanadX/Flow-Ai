@@ -620,6 +620,10 @@ change.
   - Moved the strict TypeScript safety flags from the root of `tsconfig.json` into `compilerOptions`, correcting `noUncheckedIndexAccess` to the real `noUncheckedIndexedAccess` compiler option.
   - Added narrow undefined guards for regex captures, palette lookups, cursor colors, and collaborator enrichment so `noUncheckedIndexedAccess` passes under strict mode.
   - `npx tsc --noEmit`, `npm run build`, and `npm run lint` pass with zero errors.
+- Current issue validation:
+  - Reviewed the uncommented Trigger.dev machine sizing issue in `context/current-issues.md`.
+  - Verified `trigger.config.ts` already sets a deterministic default machine with `machine: "small-1x"`, which is the supported top-level key in the installed Trigger.dev 4.4.6 types.
+  - Marked the stale `defaultMachine` finding as skipped in `context/current-issues.md` because adding that key would not match the installed SDK contract.
 
 ## In Progress
 

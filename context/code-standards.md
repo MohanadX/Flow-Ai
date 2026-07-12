@@ -1,6 +1,6 @@
 # Code Standards
 
-to make codebase stays consistant and predictable, follow these rules:
+to make codebase stays consistent and predictable, follow these rules:
 
 ## General
 
