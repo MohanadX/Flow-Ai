@@ -7,6 +7,9 @@ import {
 	serializeProject,
 } from "@/lib/project-service";
 import { checkProjectAccess, getCurrentIdentity } from "@/lib/project-access";
+import { revalidateTag, updateTag } from "next/cache";
+import { getUserProjectsTag } from "@/cache/projects";
+import {  clerkClient } from "@clerk/nextjs/server";
 
 interface ProjectRouteContext {
 	params: Promise<{
@@ -16,12 +19,13 @@ interface ProjectRouteContext {
 
 export async function GET(_: Request, { params }: ProjectRouteContext) {
 	try {
-		const identity = await getCurrentIdentity();
+		const [identity, { projectId }] = await Promise.all([
+			getCurrentIdentity(),
+			params,
+		])
 		if (!identity) {
 			return Response.json({ error: "Unauthorized" }, { status: 401 });
 		}
-
-		const { projectId } = await params;
 		const accessResult = await checkProjectAccess(projectId, identity);
 
 		if (!accessResult) {
@@ -40,11 +44,15 @@ export async function GET(_: Request, { params }: ProjectRouteContext) {
 
 export async function PATCH(request: Request, { params }: ProjectRouteContext) {
 	try {
-		const userId = await requireUserId();
-		const { projectId } = await params;
-		const body = await readJsonObject(request);
+		const [userId, body, { projectId }] = await Promise.all([
+			requireUserId(),
+			readJsonObject(request),
+			params
+		])
 		const name = normalizeRenameProjectName(body.name);
 		const project = await renameProject(projectId, userId, name);
+
+		revalidateTag(getUserProjectsTag(userId), "max")
 
 		return Response.json({ project });
 	} catch (error) {
@@ -54,9 +62,21 @@ export async function PATCH(request: Request, { params }: ProjectRouteContext) {
 
 export async function DELETE(_request: Request, { params }: ProjectRouteContext) {
 	try {
-		const userId = await requireUserId();
-		const { projectId } = await params;
-		const project = await deleteProject(projectId, userId);
+		const [userId, client,{ projectId }] = await Promise.all([
+			requireUserId(),
+			clerkClient(),
+			params
+		])
+		const {emails, ...project} = await deleteProject(projectId, userId);
+
+		const allUsersIds = await client.users.getUserList({
+		emailAddress: emails,
+	});
+
+	// revalidate each user cache
+	allUsersIds.data.forEach((user) => {
+		updateTag(getUserProjectsTag(user.id)) // fetch instantly (not lazy)
+	})
 
 		return Response.json({ project });
 	} catch (error) {

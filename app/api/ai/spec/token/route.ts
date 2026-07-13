@@ -6,8 +6,10 @@ import { prisma } from "@/lib/prisma";
 
 export async function POST(request: Request): Promise<Response> {
 	try {
-		const userId = await requireUserId();
-		const body = await readJsonObject(request);
+		const [userId, body] = await Promise.all([
+			requireUserId(),
+			readJsonObject(request)
+		])
 
 		const runId = typeof body.runId === "string" ? body.runId.trim() : "";
 
@@ -15,10 +17,20 @@ export async function POST(request: Request): Promise<Response> {
 			throw new ApiError(400, "MISSING_RUN_ID", "runId is required.");
 		}
 
-		const taskRun = await prisma.taskRun.findUnique({
-			where: { runId },
-			select: { userId: true },
-		});
+		const [taskRun, publicToken] = await Promise.all([
+			prisma.taskRun.findUnique({
+				where: { runId },
+				select: { userId: true },
+			}),
+			auth.createPublicToken({
+				scopes: {
+					read: {
+						runs: [runId],
+					},
+				},
+				expirationTime: "1h",
+			}),
+		]);
 
 		if (!taskRun) {
 			throw new ApiError(404, "RUN_NOT_FOUND", "Task run not found.");
@@ -31,15 +43,6 @@ export async function POST(request: Request): Promise<Response> {
 				"You do not have access to this run.",
 			);
 		}
-
-		const publicToken = await auth.createPublicToken({
-			scopes: {
-				read: {
-					runs: [runId],
-				},
-			},
-			expirationTime: "1h",
-		});
 
 		return Response.json({ token: publicToken });
 	} catch (error) {

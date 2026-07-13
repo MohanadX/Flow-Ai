@@ -8,9 +8,12 @@ import { ApiError } from "@/lib/api-response";
 import { deleteCanvasSnapshot } from "@/lib/canvas-service";
 import { prisma } from "@/lib/prisma";
 import { getLiveblocksClient } from "@/lib/liveblocks";
-import { slugify } from "@/lib/utils";
+import { getUserProjectsChannel, slugify } from "@/lib/utils";
 import { del } from "@vercel/blob";
 import { projectsLimit, type Project, type ProjectLists } from "@/types/project";
+import { cacheTag } from "next/cache";
+import { getUserProjectsTag } from "@/cache/projects";
+import { pusherServer } from "./pusher-server";
 
 const DEFAULT_PROJECT_NAME = "Untitled Project";
 const PROJECT_NAME_MAX_LENGTH = 50;
@@ -95,6 +98,8 @@ export async function listProjectGroups(
 	ownedPage: number = 1,
 	sharedPage: number = 1
 ): Promise<ProjectLists> {
+	"use cache"
+	cacheTag(getUserProjectsTag(userId))
 	const normalizedEmails = emailAddresses
 		.map((email) => email.trim().toLowerCase())
 		.filter(Boolean);
@@ -179,14 +184,42 @@ export async function renameProject(
 export async function deleteProject(
 	projectId: string,
 	ownerId: string,
-): Promise<ProjectDto> {
+): Promise<ProjectDto & { emails: string[]}> {
 	const existingProject = await getOwnedProject(projectId, ownerId);
-	await deleteCanvasSnapshot(existingProject.canvasJsonPath);
-	await deleteProjectSpecs(existingProject.specs.map((spec) => spec.filePath));
 
-	const project = await prisma.project.delete({
-		where: { id: projectId },
-	});
+	const [, , projectData	] = await Promise.all([
+		deleteCanvasSnapshot(existingProject.canvasJsonPath),
+		deleteProjectSpecs(existingProject.specs.map((spec) => spec.filePath)),
+		prisma.project.delete({
+			where: { id: projectId },
+			include: {
+				collaborators: {
+					select: { email: true },
+				},
+			},
+		}),
+	]);
+
+	const { collaborators } = projectData
+
+	const emails = [
+		existingProject.ownerId,
+		...collaborators.map((c) => c.email),
+	]
+
+	// pusher live update
+	// Notify all project users
+
+	const pusherPromises = emails.map((email) =>
+		pusherServer.trigger(
+			getUserProjectsChannel(email),
+			"project-removed",
+			{ id: projectId }
+		)
+	);
+
+	// don't wait for pusher to finish
+	await Promise.all(pusherPromises);
 
 	try {
 		await getLiveblocksClient().deleteRoom(projectId);
@@ -213,7 +246,7 @@ export async function deleteProject(
 		});
 	}
 
-	return serializeProject(project, ownerId);
+	return {...serializeProject(existingProject, ownerId), emails};
 }
 
 async function deleteProjectSpecs(
@@ -308,14 +341,20 @@ async function assertProjectOwner(
 	await getOwnedProject(projectId, ownerId);
 }
 
+async function fetchProjectData(projectId: string) {
+    "use cache";
+    return await prisma.project.findUnique({
+        where: { id: projectId },
+        include: { specs: { select: { filePath: true } } },
+    });
+}
+ // separated these two for data only caching (not caching errors of Forbidden if it exists)
 async function getOwnedProject(
 	projectId: string,
 	ownerId: string,
 ): Promise<PrismaProject & { specs: { filePath: string | null }[] }> {
-	const project = await prisma.project.findUnique({
-		where: { id: projectId },
-		include: { specs: { select: { filePath: true } } },
-	});
+
+	const project = await fetchProjectData(projectId)
 
 	if (!project) {
 		throw new ApiError(404, "NOT_FOUND", "Project not found.");

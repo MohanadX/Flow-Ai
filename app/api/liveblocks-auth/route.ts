@@ -1,15 +1,14 @@
-import { auth } from "@clerk/nextjs/server";
-
 import { ApiError, handleApiError, readJsonObject } from "@/lib/api-response";
 import { getCursorColorForUser, getLiveblocksClient } from "@/lib/liveblocks";
 import { checkProjectAccess } from "@/lib/project-access";
 import { getCachedClerkUser } from "@/lib/clerk-cache";
+import { requireUserId } from "@/lib/api-auth";
 
 export async function POST(request: Request) {
 	try {
 		// Resolve auth identity and request body concurrently.
-		const [{ userId }, body] = await Promise.all([
-			auth(),
+		const [userId, body] = await Promise.all([
+			requireUserId(),
 			readJsonObject(request),
 		]);
 
@@ -18,8 +17,8 @@ export async function POST(request: Request) {
 		}
 
 		// Retrieve cached user profile details to avoid slow Clerk roundtrips.
-		const cachedUser = await getCachedClerkUser(userId);
 		const roomId = normalizeRoomId(body.room);
+		const cachedUser = await getCachedClerkUser(userId);
 		const email = cachedUser.email;
 		const project = await checkProjectAccess(roomId, { userId, email });
 
@@ -29,14 +28,6 @@ export async function POST(request: Request) {
 
 		const cursorColor = getCursorColorForUser(userId);
 		const liveblocks = getLiveblocksClient();
-
-		await liveblocks.getOrCreateRoom(roomId, {
-			defaultAccesses: [],
-			metadata: {
-				projectId: project.id,
-				projectName: project.name,
-			},
-		});
 
 		const session = liveblocks.prepareSession(userId, {
 			userInfo: {
@@ -48,7 +39,19 @@ export async function POST(request: Request) {
 
 		session.allow(roomId, session.FULL_ACCESS);
 
-		const { status, body: responseBody } = await session.authorize();
+		const [, authResponse] = await Promise.all([
+			liveblocks.getOrCreateRoom(roomId, {
+				defaultAccesses: [],
+				metadata: {
+					projectId: project.id,
+					projectName: project.name,
+				},
+			}),
+			session.authorize(),
+		]);
+
+
+		const { status, body: responseBody } = authResponse;
 		return new Response(responseBody, { status });
 	} catch (error) {
 		return handleApiError(error);

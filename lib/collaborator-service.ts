@@ -58,70 +58,65 @@ export async function getCollaborators(
 	page: number = 1,
 ): Promise<CollaboratorListDto> {
 	if (page < 1) page = 1;
-	const project = await prisma.project.findUnique({
-		where: { id: projectId },
-		select: { ownerId: true },
-	});
+
+	const client = await clerkClient() 
+	const [project, callerUser] = await Promise.all([
+		prisma.project.findUnique({
+			where: { id: projectId },
+			select: { ownerId: true },
+		}),
+
+		client.users.getUser(userId),
+	]);
 
 	if (!project) {
 		throw new ApiError(404, "NOT_FOUND", "Project not found.");
 	}
 
 	// Check access: must be owner or a collaborator
-	const client = await clerkClient();
-	const callerUser = await client.users.getUser(userId);
 	const callerEmails = callerUser.emailAddresses.map((e) =>
 		e.emailAddress.toLowerCase(),
 	);
 
 	const isOwner = project.ownerId === userId;
-	const collaboratorAccess = isOwner
-		? null
-		: await prisma.projectCollaborator.findFirst({
-				where: { projectId, email: { in: callerEmails } },
-				select: { id: true },
-			});
+	
+	const [projectCollaborators, collaboratorCount, ownerClerkUser, collaboratorAccess] =
+	await Promise.all([
+		prisma.projectCollaborator.findMany({
+			where: { projectId, email: {notIn: [project.ownerId] } },
+			orderBy: { createdAt: "asc" },
+			take: collaboratorsLimit,
+			skip: (page - 1) * collaboratorsLimit,
+		}),
+
+			prisma.projectCollaborator.count({ where: { projectId } }),
+
+			project.ownerId === userId
+				? callerUser
+				: client.users.getUser(project.ownerId),
+			isOwner
+				? null
+				: prisma.projectCollaborator.findFirst({
+					where: { projectId, email: { in: callerEmails } },
+					select: { id: true },
+				}),
+	]);
+
 	const isCollaborator = !!collaboratorAccess;
 
 	if (!isOwner && !isCollaborator) {
 		throw new ApiError(403, "FORBIDDEN", "Access denied.");
 	}
-
-	const [projectCollaborators, collaboratorCount] = await Promise.all([
-		prisma.projectCollaborator.findMany({
-			where: { projectId },
-			orderBy: { createdAt: "asc" },
-			take: collaboratorsLimit,
-			skip: (page - 1) * collaboratorsLimit,
-		}),
-		prisma.projectCollaborator.count({ where: { projectId } }),
-	]);
-
 	// Enrich owner and collaborators with Clerk profile data.
 	const collaboratorEmails = projectCollaborators.map((c) => c.email);
-	const ownerClerkUser =
-		project.ownerId === userId
-			? callerUser
-			: await client.users.getUser(project.ownerId).catch((error: unknown) => {
-					const errorDetails =
-						error instanceof Error
-							? { message: error.message, stack: error.stack }
-							: { message: String(error), stack: undefined };
-					console.error(
-						"Failed to load ownerClerkUser via client.users.getUser",
-						{
-							error: errorDetails,
-							ownerId: project.ownerId,
-							callerUserId: callerUser.id,
-							callerEmails,
-						},
-					);
-					return null;
-				});
+	const collaborators = await enrichCollaborators(
+		projectCollaborators,
+		collaboratorEmails.length > 0 ? client : null
+	);
 
-	const ownerEmail = ownerClerkUser?.emailAddresses[0]?.emailAddress ?? "";
-	const ownerFirstName = ownerClerkUser?.firstName ?? "";
-	const ownerLastName = ownerClerkUser?.lastName ?? "";
+	const ownerEmail = ownerClerkUser.emailAddresses[0]?.emailAddress ?? "";
+	const ownerFirstName = ownerClerkUser.firstName ?? "";
+	const ownerLastName = ownerClerkUser.lastName ?? "";
 	const ownerName =
 		[ownerFirstName, ownerLastName].filter(Boolean).join(" ") || null;
 
@@ -129,13 +124,8 @@ export async function getCollaborators(
 		userId: project.ownerId,
 		email: ownerEmail,
 		name: ownerName,
-		imageUrl: ownerClerkUser?.imageUrl ?? null,
+		imageUrl: ownerClerkUser.imageUrl ?? null,
 	};
-
-	const collaborators = await enrichCollaborators(
-		projectCollaborators,
-		collaboratorEmails.length > 0 ? client : null,
-	);
 
 	return { owner, collaborators, collaboratorCount };
 }
@@ -209,10 +199,12 @@ export async function removeCollaborator(
 }
 
 /**  Enrich a list of collaborator DB records with Clerk display name and avatar.
+ * paginated with collaborators page limit or in base case clerk_user_limit
  */
 async function enrichCollaborators(
 	collaborators: { email: string; createdAt: Date }[],
 	client: Awaited<ReturnType<typeof clerkClient>> | null = null,
+	page?: number
 ): Promise<CollaboratorDto[]> {
 	if (collaborators.length === 0) return [];
 
@@ -227,17 +219,18 @@ async function enrichCollaborators(
 		new Set(collaborators.map((c) => c.email.toLowerCase())),
 	); // normalize & deduplicate
 
+	const limit = page ? page * collaboratorsLimit : CLERK_USER_LIST_LIMIT
 	for (
 		let offset = 0;
 		offset < collaboratorEmails.length;
-		offset += CLERK_USER_LIST_LIMIT
+		offset += limit
 	) {
 		const clerkUsers = await resolvedClient.users.getUserList({
 			emailAddress: collaboratorEmails.slice(
 				offset,
-				offset + CLERK_USER_LIST_LIMIT,
+				offset + limit,
 			),
-			limit: CLERK_USER_LIST_LIMIT,
+			limit,
 		});
 
 		// build the look up table with the clerk data

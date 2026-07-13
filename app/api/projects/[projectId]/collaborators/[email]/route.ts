@@ -17,8 +17,11 @@ export async function DELETE(
 	{ params }: CollaboratorItemRouteContext,
 ) {
 	try {
-		const userId = await requireUserId();
-		const { projectId, email } = await params;
+		const [userId, { projectId, email }] = await Promise.all([
+			requireUserId(),
+			params,
+		])
+
 		await assertProjectOwner(projectId, userId);
 
 		const decodedEmail = decodeURIComponent(email); // to decode the url email special characters encoding
@@ -26,7 +29,7 @@ export async function DELETE(
 
 		// pusher live update
 
-		pusherServer.trigger(
+		await pusherServer.trigger(
 			getUserProjectsChannel(decodedEmail),
 			"project-removed",
 			{ id: projectId }

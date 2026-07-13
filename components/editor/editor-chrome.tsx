@@ -124,7 +124,7 @@ export function EditorChrome({
 	const closeAiSidebar = useCallback(() => setIsAiSidebarOpen(false), []);
 
 	// 1. Primary fallback: search the SSR list (covers page-1 projects + all shared projects)
-	const projectsList = useMemo(() => {
+	const readyProject = useMemo(() => {
 		if (!activeProjectId) return null;
 		return [...ownedProjects, ...sharedProjects].find(
 			(p) => p.id === activeProjectId,
@@ -143,10 +143,10 @@ export function EditorChrome({
 			const res = await apiClient.get<{ project: Project }>(`/api/projects/${activeProjectId}`, { signal });
 			return res.data.project;
 		},
-		enabled: !!activeProjectId && !projectsList && !foundInHook,
+		enabled: !!activeProjectId && !readyProject && !foundInHook,
 	});
 
-	const activeProject = projectsList || foundInHook || fetchedProject || null;
+	const activeProject = readyProject || foundInHook || fetchedProject || null;
 	const isProjectLoading = !!activeProjectId && !activeProject && isFetching;
 
 	const workspaceContent = (

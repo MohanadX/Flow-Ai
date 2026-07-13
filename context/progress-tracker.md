@@ -650,6 +650,14 @@ change.
     - Added a `GET` handler to `app/api/projects/[projectId]/route.ts` to return the serialized project. 
     - Updated `EditorChrome` to use React Query's `useQuery` to fetch the project on demand when it's missing from the SSR lists and hook state.
     - Fixed a race condition where the `[projectId]/page.tsx` server component (which mounts `CollaborativeCanvas`) would render *before* the React Query fetch completed. By temporarily swapping `children` for a loading spinner while `isFetching` is true, we guarantee `CollaborativeCanvas` cannot mount until the `RoomProvider` is fully established.
+- Collaborator list request optimization:
+  - Updated `getCollaborators` in `lib/collaborator-service.ts` to group independent Clerk and Prisma work with clean `Promise.all` calls.
+  - Project lookup and Clerk client resolution now start together before the access check.
+  - After access is verified, collaborator page loading, collaborator count, and owner profile loading run together without chained `.then()` callbacks, `Promise.resolve` wrapping, or local owner-lookup catch boilerplate.
+  - Owner Clerk lookup failures now flow to the existing route-level `try/catch` and shared `handleApiError` response handling.
+  - Documented `enrichCollaborators` batch behavior near the helper comment and added an optional page-based Clerk lookup limit, falling back to `CLERK_USER_LIST_LIMIT` when no page is provided.
+  - Preserved the existing owner/collaborator access check before returning collaborator data.
+  - `npx eslint lib/collaborator-service.ts`, `npx tsc --noEmit`, and `npm run build` pass with zero errors.
 
 ## In Progress
 

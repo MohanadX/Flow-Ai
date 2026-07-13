@@ -12,6 +12,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { apiClient, getApiClientErrorMessage } from "@/lib/api-client";
 import { slugify } from "@/lib/utils";
 import type { Project, ProjectLists } from "@/types/project";
+import { deleteProjectAction } from "@/lib/actions/project-actions";
 
 export type ProjectDialogType = "create" | "rename" | "delete" | null;
 
@@ -210,7 +211,7 @@ export function useProjectActions({
                     )
                 ).data;
             } else if (dialogType === "delete" && targetProjectId) {
-                await apiClient.delete(`/api/projects/${targetProjectId}`);
+                await deleteProjectAction(targetProjectId)
             } else {
                 throw new Error("Invalid active project context for mutation.");
             }

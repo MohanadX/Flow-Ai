@@ -7,7 +7,8 @@ import { listSharedProjects } from "@/lib/project-service";
 export async function GET(request: Request) {
 	try {
 		const { searchParams } = new URL(request.url)
-		const page = parseInt(searchParams.get('page') || '1', 10)
+		const parsedPage = Number.parseInt(searchParams.get("page") ?? "1", 10);
+		const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1; // safe guard
 		const userId = await requireUserId();
 		const user = await getCachedClerkUser(userId);
 		const sharedProjects = await listSharedProjects(
