@@ -83,7 +83,7 @@ export async function getCollaborators(
 
 	const collaboratorAccess = isOwner
 		? null
-		: prisma.projectCollaborator.findFirst({
+		: await prisma.projectCollaborator.findFirst({
 			where: { projectId, email: { in: callerEmails } },
 			select: { id: true },
 		})
@@ -240,18 +240,19 @@ async function enrichCollaborators(
 		new Set(collaborators.map((c) => c.email.toLowerCase())),
 	); // normalize & deduplicate
 
-	const limit = page ? page * collaboratorsLimit : CLERK_USER_LIST_LIMIT
+	const limit = page ? page * collaboratorsLimit : CLERK_USER_LIST_LIMIT;
+	const BATCH_SIZE = Math.min(100, limit);
 	for (
 		let offset = 0;
 		offset < collaboratorEmails.length;
-		offset += limit
+		offset += BATCH_SIZE
 	) {
 		const clerkUsers = await resolvedClient.users.getUserList({
 			emailAddress: collaboratorEmails.slice(
 				offset,
-				offset + limit,
+				offset + BATCH_SIZE,
 			),
-			limit,
+			limit: BATCH_SIZE,
 		});
 
 		// build the look up table with the clerk data

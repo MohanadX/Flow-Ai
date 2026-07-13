@@ -658,6 +658,14 @@ change.
   - Documented `enrichCollaborators` batch behavior near the helper comment and added an optional page-based Clerk lookup limit, falling back to `CLERK_USER_LIST_LIMIT` when no page is provided.
   - Preserved the existing owner/collaborator access check before returning collaborator data.
   - `npx eslint lib/collaborator-service.ts`, `npx tsc --noEmit`, and `npm run build` pass with zero errors.
+- Commit `0af20d3`: fixed PR22 issues & added after for server after respond tasks
+- Commit `f86c15c`: Optimized both I\O requests and cache also handled stale data on revalidation
+- Current issue fixes:
+  - Chunked Clerk user lookups into batches of 100 in `app/api/projects/[projectId]/route.ts`, `lib/actions/project-actions.ts`, and `lib/collaborator-service.ts` to respect API limits.
+  - Excluded project owner ID from emailAddress lookup in `renameProject()` by safely separating owner ID from collaborator emails.
+  - Awaited the project collaborator query in `lib/collaborator-service.ts` so `isCollaborator` accurately reflects authorization state.
+  - Added project-level cache tagging to `fetchProjectData` in `lib/project-service.ts` and implemented comprehensive cache invalidation on all mutations (rename, delete, canvas save, spec generation) to keep ownership preconditions fresh.
+  - Updated `enrichCollaborators` in `lib/collaborator-service.ts` to dynamically calculate the overall limit based on the `page` argument while still batching Clerk API requests in chunks of 100.
 
 ## In Progress
 

@@ -2,6 +2,8 @@ import { get, put, del } from "@vercel/blob";
 import { randomUUID } from "node:crypto";
 
 import { ApiError } from "@/lib/api-response";
+import { revalidateTag } from "next/cache";
+import { getProjectDataTag } from "@/cache/projects";
 import { prisma } from "@/lib/prisma-runtime";
 
 export interface ProjectSpecDto {
@@ -38,6 +40,8 @@ export async function saveGeneratedSpec(
 				filePath: blob.url,
 			},
 		});
+
+		revalidateTag(getProjectDataTag(projectId), "max");
 	} catch (error: unknown) {
 		await del(blob.url).catch(() => {
 			// Log and ignore blob deletion errors

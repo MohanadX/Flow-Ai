@@ -14,15 +14,22 @@ export async function deleteProjectAction(projectId: string) {
 		])
 		const {emails, ...project} = await deleteProject(projectId, userId);
 
-		const allUsersIds = await client.users.getUserList({
-		emailAddress: emails,
-	});
-
     updateTag(getUserProjectsTag(project.ownerId))
-	// revalidate each user cache
-	allUsersIds.data.forEach((user) => {
-		updateTag(getUserProjectsTag(user.id)) // fetch instantly (not lazy)
-	})
+    
+    const BATCH_SIZE = 100;
+    for (let i = 0; i < emails.length; i += BATCH_SIZE) {
+		const batch = emails.slice(i, i + BATCH_SIZE);
+		if (batch.length === 0) continue;
+		const allUsersIds = await client.users.getUserList({
+			emailAddress: batch,
+			limit: BATCH_SIZE,
+		});
+
+		// revalidate each user cache
+		allUsersIds.data.forEach((user) => {
+			updateTag(getUserProjectsTag(user.id)) // fetch instantly (not lazy)
+		})
+	}
 
 	return {
 		project: {

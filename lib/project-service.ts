@@ -11,8 +11,8 @@ import { getLiveblocksClient } from "@/lib/liveblocks";
 import { getUserProjectsChannel, slugify } from "@/lib/utils";
 import { del } from "@vercel/blob";
 import { projectsLimit, type Project, type ProjectLists } from "@/types/project";
-import { cacheTag } from "next/cache";
-import { getUserProjectsTag } from "@/cache/projects";
+import { cacheTag, revalidateTag } from "next/cache";
+import { getUserProjectsTag, getProjectDataTag } from "@/cache/projects";
 import { pusherServer } from "./pusher-server";
 import { after } from "next/server";
 
@@ -186,10 +186,9 @@ export async function renameProject(
 
 	const {collaborators, ...project} = projectData 
 
-	const emails = [
-		ownerId,
-		...collaborators.map((c) => c.email),
-	]
+	revalidateTag(getProjectDataTag(projectId), "max");
+
+	const emails = collaborators.map((c) => c.email);
 
 	return {...serializeProject(project, ownerId), emails};
 }
@@ -212,6 +211,8 @@ export async function deleteProject(
     });
 
     const { collaborators } = projectData;
+
+    revalidateTag(getProjectDataTag(projectId), "max");
 
     const emails = collaborators.map((c) => c.email);
 
@@ -384,6 +385,7 @@ async function assertProjectOwner(
 
 async function fetchProjectData(projectId: string) {
     "use cache";
+    cacheTag(getProjectDataTag(projectId));
     return await prisma.project.findUnique({
         where: { id: projectId },
         include: { specs: { select: { filePath: true } } },
