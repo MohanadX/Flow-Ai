@@ -14,6 +14,7 @@ import { projectsLimit, type Project, type ProjectLists } from "@/types/project"
 import { cacheTag } from "next/cache";
 import { getUserProjectsTag } from "@/cache/projects";
 import { pusherServer } from "./pusher-server";
+import { after } from "next/server";
 
 const DEFAULT_PROJECT_NAME = "Untitled Project";
 const PROJECT_NAME_MAX_LENGTH = 50;
@@ -170,83 +171,123 @@ export async function renameProject(
 	projectId: string,
 	ownerId: string,
 	name: string,
-): Promise<ProjectDto> {
+): Promise<ProjectDto & {emails: string[]}> {
 	await assertProjectOwner(projectId, ownerId);
 
-	const project = await prisma.project.update({
+	const projectData = await prisma.project.update({
 		where: { id: projectId },
 		data: { name },
+		include: {
+			collaborators: {
+				select: {email: true}
+			}
+		}
 	});
 
-	return serializeProject(project, ownerId);
-}
-
-export async function deleteProject(
-	projectId: string,
-	ownerId: string,
-): Promise<ProjectDto & { emails: string[]}> {
-	const existingProject = await getOwnedProject(projectId, ownerId);
-
-	const [, , projectData	] = await Promise.all([
-		deleteCanvasSnapshot(existingProject.canvasJsonPath),
-		deleteProjectSpecs(existingProject.specs.map((spec) => spec.filePath)),
-		prisma.project.delete({
-			where: { id: projectId },
-			include: {
-				collaborators: {
-					select: { email: true },
-				},
-			},
-		}),
-	]);
-
-	const { collaborators } = projectData
+	const {collaborators, ...project} = projectData 
 
 	const emails = [
-		existingProject.ownerId,
+		ownerId,
 		...collaborators.map((c) => c.email),
 	]
 
-	// pusher live update
-	// Notify all project users
+	return {...serializeProject(project, ownerId), emails};
+}
 
-	const pusherPromises = emails.map((email) =>
-		pusherServer.trigger(
-			getUserProjectsChannel(email),
-			"project-removed",
-			{ id: projectId }
-		)
-	);
+export async function deleteProject(
+    projectId: string,
+    ownerId: string,
+): Promise<ProjectDto & { emails: string[] }> {
+    const existingProject = await getOwnedProject(projectId, ownerId);
 
-	// don't wait for pusher to finish
-	await Promise.all(pusherPromises);
+    
+    // include collaborators to ensure we have the emails needed for Pusher
+    const projectData = await prisma.project.delete({
+        where: { id: projectId },
+        include: {
+            collaborators: {
+                select: { email: true },
+            },
+        },
+    });
 
-	try {
-		await getLiveblocksClient().deleteRoom(projectId);
-	} catch (error) {
-		const errorMeta = getErrorMetadata(error);
+    const { collaborators } = projectData;
 
-		try {
-			await recordPendingLiveblocksCleanup(projectId, projectId, errorMeta);
-		} catch (persistError) {
-			console.error(
-				"Failed to persist pending Liveblocks cleanup",
-				projectId,
-				projectId,
-				persistError,
-			);
-		}
+    const emails = collaborators.map((c) => c.email);
 
-		console.error({
-			event: "liveblocks_room_deletion_failed",
-			projectId,
-			roomId: projectId,
-			isPersisted: true,
-			...errorMeta,
+    
+    // We do this asynchronously so we do not block returning the successful DB deletion response
+    after(async () => {
+        // Next.js will force-keep the environment alive until this entire block settles!
+        
+        // delete project files
+        const storagesResults = await Promise.allSettled([
+            deleteCanvasSnapshot(existingProject.canvasJsonPath),
+            deleteProjectSpecs(existingProject.specs.map((spec) => spec.filePath)),
+        ]);
+
+        storagesResults.forEach((result, index) => {
+        if (result.status === "rejected") {
+            console.error({
+                event: "storage_cleanup_failed",
+                projectId,
+                task: index === 0 ? "canvas_snapshot" : "project_specs",
+                error: result.reason?.message || result.reason,
+            });
+        }
+    });
+
+        // notify all users
+        const pusherResults = await Promise.allSettled(
+            emails.map((email) =>
+                pusherServer.trigger(
+                    getUserProjectsChannel(email),
+                    "project-removed",
+                    { id: projectId }
+                )
+            )
+        );
+
+			// Inspect Pusher failures
+		pusherResults.forEach((result, index) => {
+			if (result.status === "rejected") {
+				console.error({
+					event: "pusher_notification_failed",
+					projectId,
+					targetEmail: emails[index], // Maps directly back to the target user
+					error: result.reason?.message || result.reason,
+				});
+			}
 		});
-	}
 
-	return {...serializeProject(existingProject, ownerId), emails};
+        // Delete Liveblocks Room safely
+        try {
+            await getLiveblocksClient().deleteRoom(projectId);
+        } catch (error) {
+            const errorMeta = getErrorMetadata(error);
+            try {
+                await recordPendingLiveblocksCleanup(projectId, projectId, errorMeta);
+            } catch (persistError) {
+                console.error(
+                    "Failed to persist pending Liveblocks cleanup",
+                    projectId,
+                    projectId,
+                    persistError,
+                );
+            }
+
+            console.error({
+                event: "liveblocks_room_deletion_failed",
+                projectId,
+                roomId: projectId,
+                isPersisted: true,
+                ...errorMeta,
+            });
+        }
+    });
+
+    // 4. Safely return successfully serialized project
+    return { ...serializeProject(existingProject, ownerId), emails };
 }
 
 async function deleteProjectSpecs(

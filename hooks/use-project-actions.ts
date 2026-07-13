@@ -211,7 +211,7 @@ export function useProjectActions({
                     )
                 ).data;
             } else if (dialogType === "delete" && targetProjectId) {
-                await deleteProjectAction(targetProjectId)
+                projectResponse = await deleteProjectAction(targetProjectId)
             } else {
                 throw new Error("Invalid active project context for mutation.");
             }

@@ -6,6 +6,7 @@ import {
 } from "@/lib/collaborator-service";
 import { pusherServer } from "@/lib/pusher-server";
 import { getUserProjectsChannel } from "@/lib/utils";
+import { after } from "next/server";
 
 interface CollaboratorItemRouteContext {
 	params: Promise<{ projectId: string; email: string }>;
@@ -28,12 +29,17 @@ export async function DELETE(
 		await removeCollaborator(projectId, decodedEmail);
 
 		// pusher live update
-
-		await pusherServer.trigger(
-			getUserProjectsChannel(decodedEmail),
-			"project-removed",
-			{ id: projectId }
-		)
+		after(async () => {
+			try {
+				await pusherServer.trigger(
+					getUserProjectsChannel(decodedEmail),
+					"project-removed",
+					{ id: projectId }
+				)
+			} catch (error) {
+				console.error("Failed to broadcast project-removed event:", error);
+			}
+		})
 
 		return Response.json({ success: true });
 	} catch (error) {

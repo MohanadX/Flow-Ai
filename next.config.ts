@@ -22,6 +22,7 @@ const nextConfig: NextConfig = {
 	poweredByHeader: false,
 	experimental: {
 		optimizePackageImports: ["lucide-react", "@heroicons/react"],
+		hideLogsAfterAbort: true, // to hide logs emitted after a bail-out.
 	},
 };
 

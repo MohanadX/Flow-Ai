@@ -17,18 +17,20 @@ export async function GET(
 ): Promise<Response> {
 	try {
 		const { projectId, specId } = await params;
-		const project = await requireAccessibleProject(projectId);
-		const spec = await prisma.projectSpec.findFirst({
-			where: {
-				id: specId,
-				projectId,
-			},
-			select: {
-				id: true,
-				filePath: true,
-				createdAt: true,
-			},
-		});
+		const [project, spec] = await Promise.all([
+			requireAccessibleProject(projectId),
+			prisma.projectSpec.findFirst({
+				where: {
+					id: specId,
+					projectId,
+				},
+				select: {
+					id: true,
+					filePath: true,
+					createdAt: true,
+				},
+			})
+		]);
 
 		if (!spec) {
 			throw new ApiError(404, "SPEC_NOT_FOUND", "Spec not found.");

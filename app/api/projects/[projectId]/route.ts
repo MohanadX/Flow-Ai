@@ -1,15 +1,15 @@
 import { requireUserId } from "@/lib/api-auth";
 import { handleApiError, readJsonObject } from "@/lib/api-response";
 import {
-	deleteProject,
 	normalizeRenameProjectName,
 	renameProject,
 	serializeProject,
 } from "@/lib/project-service";
 import { checkProjectAccess, getCurrentIdentity } from "@/lib/project-access";
-import { revalidateTag, updateTag } from "next/cache";
+import { revalidateTag } from "next/cache";
 import { getUserProjectsTag } from "@/cache/projects";
 import {  clerkClient } from "@clerk/nextjs/server";
+import { after } from "next/server";
 
 interface ProjectRouteContext {
 	params: Promise<{
@@ -47,39 +47,56 @@ export async function PATCH(request: Request, { params }: ProjectRouteContext) {
 		const [userId, body, { projectId }] = await Promise.all([
 			requireUserId(),
 			readJsonObject(request),
-			params
+			params,
 		])
 		const name = normalizeRenameProjectName(body.name);
-		const project = await renameProject(projectId, userId, name);
+		const { emails, ...project } = await renameProject(projectId, userId, name);
 
-		revalidateTag(getUserProjectsTag(userId), "max")
-
+		after(async () => {
+			try {
+				const client = await clerkClient()
+				const allUsersIds = await client.users.getUserList({
+					emailAddress: emails,
+				});
+			
+				// revalidate each user cache
+				allUsersIds.data.forEach((user) => {
+					revalidateTag(getUserProjectsTag(user.id), "max")
+				})
+			} catch (backgroundError) {
+				console.error({
+                    event: "project_rename_cache_revalidation_failed",
+                    projectId,
+                    error: backgroundError,
+                });
+			}
+		})
 		return Response.json({ project });
 	} catch (error) {
 		return handleApiError(error);
 	}
 }
 
-export async function DELETE(_request: Request, { params }: ProjectRouteContext) {
-	try {
-		const [userId, client,{ projectId }] = await Promise.all([
-			requireUserId(),
-			clerkClient(),
-			params
-		])
-		const {emails, ...project} = await deleteProject(projectId, userId);
+// export async function DELETE(_request: Request, { params }: ProjectRouteContext) {
+// 	try {
+// 		const [userId, client,{ projectId }] = await Promise.all([
+// 			requireUserId(),
+// 			clerkClient(),
+// 			params
+// 		])
+// 		const {emails, ...project} = await deleteProject(projectId, userId);
 
-		const allUsersIds = await client.users.getUserList({
-		emailAddress: emails,
-	});
+// 		const allUsersIds = await client.users.getUserList({
+// 		emailAddress: emails,
+// 	});
 
-	// revalidate each user cache
-	allUsersIds.data.forEach((user) => {
-		updateTag(getUserProjectsTag(user.id)) // fetch instantly (not lazy)
-	})
+// 	// revalidate each user cache
+// 	allUsersIds.data.forEach((user) => {
+// 		updateTag(getUserProjectsTag(user.id)) // fetch instantly (not lazy)
+// 	})
 
-		return Response.json({ project });
-	} catch (error) {
-		return handleApiError(error);
-	}
-}
+// 		return Response.json({ project });
+// 	} catch (error) {
+// 		return handleApiError(error);
+// 	}
+// }

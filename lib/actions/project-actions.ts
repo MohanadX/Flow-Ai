@@ -5,7 +5,6 @@ import { requireUserId } from "../api-auth";
 import { deleteProject } from "../project-service";
 import { updateTag } from "next/cache";
 import { getUserProjectsTag } from "@/cache/projects";
-import { handleApiError } from "../api-response";
 
 export async function deleteProjectAction(projectId: string) {
     try {
@@ -13,18 +12,26 @@ export async function deleteProjectAction(projectId: string) {
 			requireUserId(),
 			clerkClient()
 		])
-		const {emails} = await deleteProject(projectId, userId);
+		const {emails, ...project} = await deleteProject(projectId, userId);
 
 		const allUsersIds = await client.users.getUserList({
 		emailAddress: emails,
 	});
 
-    // updateTag(getUserProjectsTag(project.ownerId))
+    updateTag(getUserProjectsTag(project.ownerId))
 	// revalidate each user cache
 	allUsersIds.data.forEach((user) => {
 		updateTag(getUserProjectsTag(user.id)) // fetch instantly (not lazy)
 	})
+
+	return {
+		project: {
+			...project,
+			isOwner: project.ownerId === userId
+		}
+	}
 	} catch (error) {
-		return handleApiError(error);
+		console.error("Server Action Error:", error);
+        throw new Error(error instanceof Error ? error.message : "An unexpected error occurred");
 	}
 }
