@@ -40,8 +40,6 @@ export async function saveGeneratedSpec(
 				filePath: blob.url,
 			},
 		});
-
-		revalidateTag(getProjectDataTag(projectId), "max");
 	} catch (error: unknown) {
 		await del(blob.url).catch(() => {
 			// Log and ignore blob deletion errors
@@ -56,6 +54,12 @@ export async function saveGeneratedSpec(
 			"SPEC_CREATE_FAILED",
 			"Failed to create project spec.",
 		);
+	}
+
+	try {
+		revalidateTag(getProjectDataTag(projectId), "max");
+	} catch (error) {
+		console.error("Failed to revalidate project cache:", error);
 	}
 
 	return {

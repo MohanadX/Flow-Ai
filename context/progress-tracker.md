@@ -666,6 +666,7 @@ change.
   - Awaited the project collaborator query in `lib/collaborator-service.ts` so `isCollaborator` accurately reflects authorization state.
   - Added project-level cache tagging to `fetchProjectData` in `lib/project-service.ts` and implemented comprehensive cache invalidation on all mutations (rename, delete, canvas save, spec generation) to keep ownership preconditions fresh.
   - Updated `enrichCollaborators` in `lib/collaborator-service.ts` to dynamically calculate the overall limit based on the `page` argument while still batching Clerk API requests in chunks of 100.
+  - Separated `revalidateTag` from the `try/catch` block in `saveGeneratedSpec` (`lib/spec-service.ts`) so cache revalidation failures do not incorrectly trigger blob cleanup or undo the successful database insert.
 
 ## In Progress
 
