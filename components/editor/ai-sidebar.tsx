@@ -104,7 +104,6 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 	// True once createFeed has resolved (success or already-exists), meaning the
 	// feed exists and useFeedMessages errors should be treated as real failures.
 	const [isFeedReady, setIsFeedReady] = useState(false);
-	const [chatRetryCount, setChatRetryCount] = useState(0);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const isMountedRef = useRef(true);
 	const submitAbortControllerRef = useRef<AbortController | null>(null);
@@ -491,14 +490,13 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 							</div>
 						) : (
 							<ChatMessages
-								key={chatRetryCount}
 								selfId={self?.id}
 								onPickStarterPrompt={(starterPrompt) => {
 									setPrompt(starterPrompt);
 									requestAnimationFrame(resizeTextarea);
 								}}
 								isInputLocked={isInputLocked}
-								onRetry={() => setChatRetryCount((c) => c + 1)}
+								
 							/>
 						)}
 					</div>
@@ -705,15 +703,19 @@ function ChatMessages({
 	selfId,
 	onPickStarterPrompt,
 	isInputLocked,
-	onRetry,
 }: {
 	selfId: string | undefined;
 	onPickStarterPrompt: (prompt: string) => void;
 	isInputLocked: boolean;
-	onRetry: () => void;
 }) {
 	const messagesEndRef = useRef<HTMLDivElement>(null);
-	const feedMessagesResult = useFeedMessages(AI_CHAT_FEED_ID, { limit: 100 });
+	const [retryKey, setRetryKey] = useState(0);
+
+	// We append a dynamic query/suffix to the feed ID when we want to retry.
+    // Liveblocks ignores URL-like search params in the ID string, but the changing 
+    // string trick React/Liveblocks into resetting the fetch cache.
+    const activeFeedId = `${AI_CHAT_FEED_ID}?retry=${retryKey}`;
+	const feedMessagesResult = useFeedMessages(activeFeedId, { limit: 100 });
 	const isChatLoading =
 		"isLoading" in feedMessagesResult ? feedMessagesResult.isLoading : false;
 	const chatLoadError =
@@ -746,6 +748,11 @@ function ChatMessages({
 		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 	}, [messages]);
 
+	const handleRetry = () => {
+        // triggering a fresh network request!
+        setRetryKey((prev) => prev + 1);
+    };
+
 	if (isChatLoading) {
 		return (
 			<div className="flex h-full items-center justify-center gap-2 text-xs text-copy-muted">
@@ -763,7 +770,7 @@ function ChatMessages({
 					type="button"
 					variant="outline"
 					size="sm"
-					onClick={onRetry}
+					onClick={handleRetry}
 					className="h-8 gap-1.5"
 				>
 					<RefreshCw className="h-3.5 w-3.5" />
@@ -833,6 +840,8 @@ function ChatMessages({
 		</div>
 	);
 }
+
+
 
 function SpecGenerationButton({
 	projectId,

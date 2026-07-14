@@ -669,9 +669,10 @@ change.
   - Separated `revalidateTag` from the `try/catch` block in `saveGeneratedSpec` (`lib/spec-service.ts`) so cache revalidation failures do not incorrectly trigger blob cleanup or undo the successful database insert.
 - 30-canvas-optimize:
   - Managed drag preview position by updating React state (`setDragPreview`) and applying a `transform: translate(...)` offset (instead of `left`/`top`) to avoid layout reflow.
-  - Reduced `LiveblocksProvider` `throttle` from 80ms to 32ms (~30fps) and removed the redundant explicit `lostConnectionTimeout={5000}` (matches SDK default). - Bound the throttled update to `handlePointerMove` on the canvas and shape panel to prevent network congestion during high-frequency mouse movements.
+  - Reduced `LiveblocksProvider` `throttle` from 80ms to 32ms (~30fps) and removed the redundant explicit `lostConnectionTimeout={5000}` (matches SDK default).
+  - Bound the throttled update to `handlePointerMove` on the canvas and shape panel to prevent network congestion during high-frequency mouse movements.
   - Ensured immediate `cursor: null` dispatch bypassing the throttle on `handlePointerLeave`
-    .added a "trailing edge" to the throttle that saves and executes the very last event once the cooldown timer ends. This prevents interactive UI elements (like draggable elements or sliders) from freezing short of their final positions while still maintaining smooth, optimized performance during active movement.
+  - Added a "trailing edge" to the throttle that saves and executes the very last event once the cooldown timer ends. This prevents interactive UI elements (like draggable elements or sliders) from freezing short of their final positions while still maintaining smooth, optimized performance during active movement.
 
 ## In Progress
 
