@@ -1,12 +1,15 @@
 import { requireUserId } from "@/lib/api-auth";
 import { handleApiError, readJsonObject } from "@/lib/api-response";
 import {
-	deleteProject,
 	normalizeRenameProjectName,
 	renameProject,
 	serializeProject,
 } from "@/lib/project-service";
 import { checkProjectAccess, getCurrentIdentity } from "@/lib/project-access";
+import { revalidateTag } from "next/cache";
+import { getUserProjectsTag } from "@/cache/projects";
+import {  clerkClient } from "@clerk/nextjs/server";
+import { after } from "next/server";
 
 interface ProjectRouteContext {
 	params: Promise<{
@@ -16,12 +19,13 @@ interface ProjectRouteContext {
 
 export async function GET(_: Request, { params }: ProjectRouteContext) {
 	try {
-		const identity = await getCurrentIdentity();
+		const [identity, { projectId }] = await Promise.all([
+			getCurrentIdentity(),
+			params,
+		])
 		if (!identity) {
 			return Response.json({ error: "Unauthorized" }, { status: 401 });
 		}
-
-		const { projectId } = await params;
 		const accessResult = await checkProjectAccess(projectId, identity);
 
 		if (!accessResult) {
@@ -40,26 +44,68 @@ export async function GET(_: Request, { params }: ProjectRouteContext) {
 
 export async function PATCH(request: Request, { params }: ProjectRouteContext) {
 	try {
-		const userId = await requireUserId();
-		const { projectId } = await params;
-		const body = await readJsonObject(request);
+		const [userId, body, { projectId }] = await Promise.all([
+			requireUserId(),
+			readJsonObject(request),
+			params,
+		])
 		const name = normalizeRenameProjectName(body.name);
-		const project = await renameProject(projectId, userId, name);
+		const { emails, ...project } = await renameProject(projectId, userId, name);
 
+		after(async () => {
+			try {
+				const client = await clerkClient()
+				
+				revalidateTag(getUserProjectsTag(project.ownerId), "max")
+				
+				const BATCH_SIZE = 100;
+				for (let i = 0; i < emails.length; i += BATCH_SIZE) {
+					const batch = emails.slice(i, i + BATCH_SIZE);
+					if (batch.length === 0) continue;
+					const allUsersIds = await client.users.getUserList({
+						emailAddress: batch,
+						limit: BATCH_SIZE,
+					});
+					
+					// revalidate each user cache
+					allUsersIds.data.forEach((user) => {
+						revalidateTag(getUserProjectsTag(user.id), "max")
+					})
+				}
+			} catch (backgroundError) {
+				console.error({
+                    event: "project_rename_cache_revalidation_failed",
+                    projectId,
+                    error: backgroundError,
+                });
+			}
+		})
 		return Response.json({ project });
 	} catch (error) {
 		return handleApiError(error);
 	}
 }
 
-export async function DELETE(_request: Request, { params }: ProjectRouteContext) {
-	try {
-		const userId = await requireUserId();
-		const { projectId } = await params;
-		const project = await deleteProject(projectId, userId);
+// export async function DELETE(_request: Request, { params }: ProjectRouteContext) {
+// 	try {
+// 		const [userId, client,{ projectId }] = await Promise.all([
+// 			requireUserId(),
+// 			clerkClient(),
+// 			params
+// 		])
+// 		const {emails, ...project} = await deleteProject(projectId, userId);
 
-		return Response.json({ project });
-	} catch (error) {
-		return handleApiError(error);
-	}
-}
+// 		const allUsersIds = await client.users.getUserList({
+// 		emailAddress: emails,
+// 	});
+
+// 	// revalidate each user cache
+// 	allUsersIds.data.forEach((user) => {
+// 		updateTag(getUserProjectsTag(user.id)) // fetch instantly (not lazy)
+// 	})
+
+// 		return Response.json({ project });
+// 	} catch (error) {
+// 		return handleApiError(error);
+// 	}
+// }

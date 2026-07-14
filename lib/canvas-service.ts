@@ -2,6 +2,8 @@ import "server-only";
 
 import { BlobNotFoundError, del, get, put } from "@vercel/blob";
 import { ApiError } from "@/lib/api-response";
+import { revalidateTag } from "next/cache";
+import { getProjectDataTag } from "@/cache/projects";
 import { prisma } from "@/lib/prisma";
 import type { CanvasEdge, CanvasNode, CanvasSnapshot } from "@/types/canvas";
 
@@ -41,6 +43,8 @@ export async function saveCanvasSnapshot(
 		where: { id: projectId },
 		data: { canvasJsonPath: blob.url },
 	});
+
+	revalidateTag(getProjectDataTag(projectId), "max");
 
 	return {
 		canvas,

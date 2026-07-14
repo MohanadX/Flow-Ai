@@ -153,7 +153,7 @@ export function ShareDialog({
 	});
 
 	const owner = data?.owner ?? null;
-	const collaborators = data?.collaborators ?? [];
+	const collaborators = data?.collaborators ?? []
 	const totalPages = Math.ceil((data?.collaboratorCount || 1) / collaboratorsLimit);
 
 	// ── invite mutation ─────────────────────────────────────────────────────

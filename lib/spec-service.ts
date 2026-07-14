@@ -2,6 +2,8 @@ import { get, put, del } from "@vercel/blob";
 import { randomUUID } from "node:crypto";
 
 import { ApiError } from "@/lib/api-response";
+import { revalidateTag } from "next/cache";
+import { getProjectDataTag } from "@/cache/projects";
 import { prisma } from "@/lib/prisma-runtime";
 
 export interface ProjectSpecDto {
@@ -52,6 +54,12 @@ export async function saveGeneratedSpec(
 			"SPEC_CREATE_FAILED",
 			"Failed to create project spec.",
 		);
+	}
+
+	try {
+		revalidateTag(getProjectDataTag(projectId), "max");
+	} catch (error) {
+		console.error("Failed to revalidate project cache:", error);
 	}
 
 	return {

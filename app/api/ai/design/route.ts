@@ -9,8 +9,10 @@ import type { designAgentTask } from "@/trigger/design-agent";
 
 export async function POST(request: Request): Promise<Response> {
 	try {
-		const userId = await requireUserId();
-		const body = await readJsonObject(request);
+		const [userId, body] = await Promise.all([
+			requireUserId(),
+			readJsonObject(request)
+		])
 
 		const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
 		const projectId =

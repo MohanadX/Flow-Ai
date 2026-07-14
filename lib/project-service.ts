@@ -8,9 +8,13 @@ import { ApiError } from "@/lib/api-response";
 import { deleteCanvasSnapshot } from "@/lib/canvas-service";
 import { prisma } from "@/lib/prisma";
 import { getLiveblocksClient } from "@/lib/liveblocks";
-import { slugify } from "@/lib/utils";
+import { getUserProjectsChannel, slugify } from "@/lib/utils";
 import { del } from "@vercel/blob";
 import { projectsLimit, type Project, type ProjectLists } from "@/types/project";
+import { cacheTag, revalidateTag } from "next/cache";
+import { getUserProjectsTag, getProjectDataTag } from "@/cache/projects";
+import { pusherServer } from "./pusher-server";
+import { after } from "next/server";
 
 const DEFAULT_PROJECT_NAME = "Untitled Project";
 const PROJECT_NAME_MAX_LENGTH = 50;
@@ -95,6 +99,8 @@ export async function listProjectGroups(
 	ownedPage: number = 1,
 	sharedPage: number = 1
 ): Promise<ProjectLists> {
+	"use cache"
+	cacheTag(getUserProjectsTag(userId))
 	const normalizedEmails = emailAddresses
 		.map((email) => email.trim().toLowerCase())
 		.filter(Boolean);
@@ -165,55 +171,124 @@ export async function renameProject(
 	projectId: string,
 	ownerId: string,
 	name: string,
-): Promise<ProjectDto> {
+): Promise<ProjectDto & {emails: string[]}> {
 	await assertProjectOwner(projectId, ownerId);
 
-	const project = await prisma.project.update({
+	const projectData = await prisma.project.update({
 		where: { id: projectId },
 		data: { name },
+		include: {
+			collaborators: {
+				select: {email: true}
+			}
+		}
 	});
 
-	return serializeProject(project, ownerId);
+	const {collaborators, ...project} = projectData 
+
+	revalidateTag(getProjectDataTag(projectId), "max");
+
+	const emails = collaborators.map((c) => c.email);
+
+	return {...serializeProject(project, ownerId), emails};
 }
 
 export async function deleteProject(
-	projectId: string,
-	ownerId: string,
-): Promise<ProjectDto> {
-	const existingProject = await getOwnedProject(projectId, ownerId);
-	await deleteCanvasSnapshot(existingProject.canvasJsonPath);
-	await deleteProjectSpecs(existingProject.specs.map((spec) => spec.filePath));
+    projectId: string,
+    ownerId: string,
+): Promise<ProjectDto & { emails: string[] }> {
+    const existingProject = await getOwnedProject(projectId, ownerId);
 
-	const project = await prisma.project.delete({
-		where: { id: projectId },
-	});
+    
+    // include collaborators to ensure we have the emails needed for Pusher
+    const projectData = await prisma.project.delete({
+        where: { id: projectId },
+        include: {
+            collaborators: {
+                select: { email: true },
+            },
+        },
+    });
 
-	try {
-		await getLiveblocksClient().deleteRoom(projectId);
-	} catch (error) {
-		const errorMeta = getErrorMetadata(error);
+    const { collaborators } = projectData;
 
-		try {
-			await recordPendingLiveblocksCleanup(projectId, projectId, errorMeta);
-		} catch (persistError) {
-			console.error(
-				"Failed to persist pending Liveblocks cleanup",
-				projectId,
-				projectId,
-				persistError,
-			);
-		}
+    revalidateTag(getProjectDataTag(projectId), "max");
 
-		console.error({
-			event: "liveblocks_room_deletion_failed",
-			projectId,
-			roomId: projectId,
-			isPersisted: true,
-			...errorMeta,
+    const emails = collaborators.map((c) => c.email);
+
+    
+    // We do this asynchronously so we do not block returning the successful DB deletion response
+    after(async () => {
+        // Next.js will force-keep the environment alive until this entire block settles!
+        
+        // delete project files
+        const storagesResults = await Promise.allSettled([
+            deleteCanvasSnapshot(existingProject.canvasJsonPath),
+            deleteProjectSpecs(existingProject.specs.map((spec) => spec.filePath)),
+        ]);
+
+        storagesResults.forEach((result, index) => {
+        if (result.status === "rejected") {
+            console.error({
+                event: "storage_cleanup_failed",
+                projectId,
+                task: index === 0 ? "canvas_snapshot" : "project_specs",
+                error: result.reason?.message || result.reason,
+            });
+        }
+    });
+
+        // notify all users
+        const pusherResults = await Promise.allSettled(
+            emails.map((email) =>
+                pusherServer.trigger(
+                    getUserProjectsChannel(email),
+                    "project-removed",
+                    { id: projectId }
+                )
+            )
+        );
+
+			// Inspect Pusher failures
+		pusherResults.forEach((result, index) => {
+			if (result.status === "rejected") {
+				console.error({
+					event: "pusher_notification_failed",
+					projectId,
+					targetEmail: emails[index], // Maps directly back to the target user
+					error: result.reason?.message || result.reason,
+				});
+			}
 		});
-	}
 
-	return serializeProject(project, ownerId);
+        // Delete Liveblocks Room safely
+        try {
+            await getLiveblocksClient().deleteRoom(projectId);
+        } catch (error) {
+            const errorMeta = getErrorMetadata(error);
+            try {
+                await recordPendingLiveblocksCleanup(projectId, projectId, errorMeta);
+            } catch (persistError) {
+                console.error(
+                    "Failed to persist pending Liveblocks cleanup",
+                    projectId,
+                    projectId,
+                    persistError,
+                );
+            }
+
+            console.error({
+                event: "liveblocks_room_deletion_failed",
+                projectId,
+                roomId: projectId,
+                isPersisted: true,
+                ...errorMeta,
+            });
+        }
+    });
+
+    // 4. Safely return successfully serialized project
+    return { ...serializeProject(existingProject, ownerId), emails };
 }
 
 async function deleteProjectSpecs(
@@ -301,21 +376,28 @@ async function recordPendingLiveblocksCleanup(
 	`;
 }
 
-async function assertProjectOwner(
+export async function assertProjectOwner(
 	projectId: string,
 	ownerId: string,
 ): Promise<void> {
 	await getOwnedProject(projectId, ownerId);
 }
 
+async function fetchProjectData(projectId: string) {
+    "use cache";
+    cacheTag(getProjectDataTag(projectId));
+    return await prisma.project.findUnique({
+        where: { id: projectId },
+        include: { specs: { select: { filePath: true } } },
+    });
+}
+ // separated these two for data only caching (not caching errors of Forbidden if it exists)
 async function getOwnedProject(
 	projectId: string,
 	ownerId: string,
 ): Promise<PrismaProject & { specs: { filePath: string | null }[] }> {
-	const project = await prisma.project.findUnique({
-		where: { id: projectId },
-		include: { specs: { select: { filePath: true } } },
-	});
+
+	const project = await fetchProjectData(projectId)
 
 	if (!project) {
 		throw new ApiError(404, "NOT_FOUND", "Project not found.");

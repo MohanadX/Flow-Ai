@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 import { Users, Sparkles, FileText, LayoutTemplate } from "lucide-react";
+import { Time } from "@/components/time";
 
 const features = [
 	{ text: "Real-time multiplayer canvas", Icon: Users },
@@ -43,8 +44,9 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 					</ul>
 				</div>
 
-				<div className="text-sm text-copy-faint">
-					&copy; {new Date().getFullYear()} Flow AI. All rights reserved.
+				{/* make this inside client component	 */}
+				<div className="text-sm text-copy-faint" suppressHydrationWarning>
+					<Time />
 				</div>
 			</div>
 

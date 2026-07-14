@@ -1,6 +1,6 @@
 import "server-only";
 
-import { clerkClient } from "@clerk/nextjs/server";
+import { User, clerkClient } from "@clerk/nextjs/server";
 import { Prisma } from "@/app/generated/prisma/client";
 import { ApiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
@@ -13,6 +13,7 @@ import {
 	type CollaboratorListResponse,
 	type Owner,
 } from "@/types/collaborator";
+import { after } from "next/server";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CLERK_USER_LIST_LIMIT = 500;
@@ -32,25 +33,7 @@ export function normalizeCollaboratorEmail(email: unknown): string {
 	return normalized;
 }
 
-export async function assertProjectOwner(
-	projectId: string,
-	userId: string,
-): Promise<void> {
-	const project = await prisma.project.findUnique({
-		where: { id: projectId },
-		select: { ownerId: true },
-	});
-	if (!project) {
-		throw new ApiError(404, "NOT_FOUND", "Project not found.");
-	}
-	if (project.ownerId !== userId) {
-		throw new ApiError(
-			403,
-			"FORBIDDEN",
-			"Only the project owner can manage collaborators.",
-		);
-	}
-}
+
 
 export async function getCollaborators(
 	projectId: string,
@@ -58,66 +41,79 @@ export async function getCollaborators(
 	page: number = 1,
 ): Promise<CollaboratorListDto> {
 	if (page < 1) page = 1;
-	const project = await prisma.project.findUnique({
-		where: { id: projectId },
-		select: { ownerId: true },
-	});
+
+	const client = await clerkClient() 
+	const [project, callerUser] = await Promise.all([
+		prisma.project.findUnique({
+			where: { id: projectId },
+			select: { ownerId: true },
+		}),
+
+		client.users.getUser(userId),
+	]);
 
 	if (!project) {
 		throw new ApiError(404, "NOT_FOUND", "Project not found.");
 	}
 
 	// Check access: must be owner or a collaborator
-	const client = await clerkClient();
-	const callerUser = await client.users.getUser(userId);
 	const callerEmails = callerUser.emailAddresses.map((e) =>
 		e.emailAddress.toLowerCase(),
 	);
 
 	const isOwner = project.ownerId === userId;
+
 	const collaboratorAccess = isOwner
 		? null
 		: await prisma.projectCollaborator.findFirst({
-				where: { projectId, email: { in: callerEmails } },
-				select: { id: true },
-			});
+			where: { projectId, email: { in: callerEmails } },
+			select: { id: true },
+		})
+
 	const isCollaborator = !!collaboratorAccess;
 
 	if (!isOwner && !isCollaborator) {
 		throw new ApiError(403, "FORBIDDEN", "Access denied.");
 	}
 
-	const [projectCollaborators, collaboratorCount] = await Promise.all([
+	// fallback if clerk fail
+	let ownerClerkUser: User | null = null;
+    
+    if (project.ownerId === userId) {
+        ownerClerkUser = callerUser;
+    } else {
+        try {
+            ownerClerkUser = await client.users.getUser(project.ownerId);
+        } catch (error) {
+            // Log the error internally so you know Clerk is acting up or a user was deleted
+            console.warn(`Failed to fetch Clerk profile for owner ID ${project.ownerId}:`, error);
+            ownerClerkUser = null;
+        }
+    }
+
+	const ownerEmailsToExclude = ownerClerkUser
+        ? ownerClerkUser.emailAddresses.map((e) => e.emailAddress.toLowerCase())
+        : [];
+	const [projectCollaborators, collaboratorCount] =
+	await Promise.all([
 		prisma.projectCollaborator.findMany({
-			where: { projectId },
+			where: { projectId, email: { not: { in: ownerEmailsToExclude } } },
 			orderBy: { createdAt: "asc" },
 			take: collaboratorsLimit,
 			skip: (page - 1) * collaboratorsLimit,
 		}),
-		prisma.projectCollaborator.count({ where: { projectId } }),
+
+		prisma.projectCollaborator.count({
+			where: { projectId, email: {not: { in: ownerEmailsToExclude } } }
+		}),
 	]);
 
 	// Enrich owner and collaborators with Clerk profile data.
 	const collaboratorEmails = projectCollaborators.map((c) => c.email);
-	const ownerClerkUser =
-		project.ownerId === userId
-			? callerUser
-			: await client.users.getUser(project.ownerId).catch((error: unknown) => {
-					const errorDetails =
-						error instanceof Error
-							? { message: error.message, stack: error.stack }
-							: { message: String(error), stack: undefined };
-					console.error(
-						"Failed to load ownerClerkUser via client.users.getUser",
-						{
-							error: errorDetails,
-							ownerId: project.ownerId,
-							callerUserId: callerUser.id,
-							callerEmails,
-						},
-					);
-					return null;
-				});
+	const collaborators = await enrichCollaborators(
+		projectCollaborators,
+		collaboratorEmails.length > 0 ? client : null
+	);
 
 	const ownerEmail = ownerClerkUser?.emailAddresses[0]?.emailAddress ?? "";
 	const ownerFirstName = ownerClerkUser?.firstName ?? "";
@@ -131,11 +127,6 @@ export async function getCollaborators(
 		name: ownerName,
 		imageUrl: ownerClerkUser?.imageUrl ?? null,
 	};
-
-	const collaborators = await enrichCollaborators(
-		projectCollaborators,
-		collaboratorEmails.length > 0 ? client : null,
-	);
 
 	return { owner, collaborators, collaboratorCount };
 }
@@ -158,18 +149,20 @@ export async function addCollaborator(
 		});
 		const enrichedRes = enrichCollaborators([collaborator]);
 
-		// Trigger live update 
-		try {
-			const serializedProject = serializeProject(project, ""); // pass empty string for currentUserId so isOwner is false
-			await pusherServer.trigger(
-				getUserProjectsChannel(email),
-				"project-shared",
-				{ project: serializedProject }
-			);
-		} catch (publishErr) {
-			// Don't fail the whole request if Pusher fails
-			console.error("Failed to broadcast project-shared event:", publishErr);
-		}
+		after(async () => {
+			// Trigger live update 
+			try {
+				const serializedProject = serializeProject(project, ""); // pass empty string for currentUserId so isOwner is false
+				await pusherServer.trigger(
+					getUserProjectsChannel(email),
+					"project-shared",
+					{ project: serializedProject }
+				);
+			} catch (publishErr) {
+				// Don't fail the whole request if Pusher fails
+				console.error("Failed to broadcast project-shared event:", publishErr);
+			}
+		})
 
 		const [enriched] = await enrichedRes
 		if (!enriched) {
@@ -209,10 +202,12 @@ export async function removeCollaborator(
 }
 
 /**  Enrich a list of collaborator DB records with Clerk display name and avatar.
+ * paginated with collaborators page limit or in base case clerk_user_limit
  */
 async function enrichCollaborators(
 	collaborators: { email: string; createdAt: Date }[],
 	client: Awaited<ReturnType<typeof clerkClient>> | null = null,
+	page?: number
 ): Promise<CollaboratorDto[]> {
 	if (collaborators.length === 0) return [];
 
@@ -227,17 +222,19 @@ async function enrichCollaborators(
 		new Set(collaborators.map((c) => c.email.toLowerCase())),
 	); // normalize & deduplicate
 
+	const limit = page ? page * collaboratorsLimit : CLERK_USER_LIST_LIMIT;
+	const BATCH_SIZE = Math.min(100, limit);
 	for (
 		let offset = 0;
 		offset < collaboratorEmails.length;
-		offset += CLERK_USER_LIST_LIMIT
+		offset += BATCH_SIZE
 	) {
 		const clerkUsers = await resolvedClient.users.getUserList({
 			emailAddress: collaboratorEmails.slice(
 				offset,
-				offset + CLERK_USER_LIST_LIMIT,
+				offset + BATCH_SIZE,
 			),
-			limit: CLERK_USER_LIST_LIMIT,
+			limit: BATCH_SIZE,
 		});
 
 		// build the look up table with the clerk data

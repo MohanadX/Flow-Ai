@@ -2,10 +2,10 @@ import { requireUserId } from "@/lib/api-auth";
 import { handleApiError, readJsonObject } from "@/lib/api-response";
 import {
 	addCollaborator,
-	assertProjectOwner,
 	getCollaborators,
 	normalizeCollaboratorEmail,
 } from "@/lib/collaborator-service";
+import { assertProjectOwner } from "@/lib/project-service";
 
 interface CollaboratorRouteContext {
 	params: Promise<{ projectId: string }>;
@@ -18,9 +18,13 @@ export async function GET(
 ) {
 	try {
 		const { searchParams } = new URL(request.url);
-		const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
-		const userId = await requireUserId();
-		const { projectId } = await params;
+		const parsedPage = Number.parseInt(searchParams.get("page") ?? "1", 10);
+		const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1; // safe guard
+		
+		const [userId, { projectId }] = await Promise.all([
+			requireUserId(),
+			params
+		])
 		const result = await getCollaborators(projectId, userId, page);
 
 		return Response.json(result);
@@ -35,11 +39,14 @@ export async function POST(
 	{ params }: CollaboratorRouteContext,
 ) {
 	try {
-		const userId = await requireUserId();
-		const { projectId } = await params;
+		const [userId, { projectId }, body] = await Promise.all([
+			requireUserId(),	
+			params,
+			readJsonObject(request)
+		])
+
 		await assertProjectOwner(projectId, userId);
 
-		const body = await readJsonObject(request);
 		const email = normalizeCollaboratorEmail(body.email);
 		const collaborator = await addCollaborator(projectId, email);
 

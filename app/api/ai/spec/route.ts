@@ -10,8 +10,10 @@ import { generateSpecRequestSchema } from "@/types/spec-generation";
 
 export async function POST(request: Request): Promise<Response> {
 	try {
-		const userId = await requireUserId();
-		const body = await readJsonObject(request);
+		const [userId, body] = await Promise.all([
+			requireUserId(),
+			readJsonObject(request)
+		])
 		const parsed = generateSpecRequestSchema.safeParse(body);
 
 		if (!parsed.success) {

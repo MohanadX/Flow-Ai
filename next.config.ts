@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
 	/* config options here */
 	reactCompiler: true,
 	reactStrictMode: true,
+	cacheComponents: true,
 	compress: true,
 	images: {
 		formats: ["image/avif", "image/webp"],
@@ -21,6 +22,7 @@ const nextConfig: NextConfig = {
 	poweredByHeader: false,
 	experimental: {
 		optimizePackageImports: ["lucide-react", "@heroicons/react"],
+		hideLogsAfterAbort: true, // to hide logs emitted after a bail-out.
 	},
 };
 
