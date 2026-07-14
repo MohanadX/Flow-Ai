@@ -6,7 +6,6 @@ import { getCachedClerkUser } from "@/lib/clerk-cache";
 import { prisma } from "@/lib/prisma";
 import { checkProjectAccess } from "@/lib/project-access";
 import type { designAgentTask } from "@/trigger/design-agent";
-import { cache } from "react";
 
 export async function POST(request: Request): Promise<Response> {
 	try {
@@ -55,7 +54,7 @@ export async function POST(request: Request): Promise<Response> {
 			roomId: canonicalProjectId,
 		});
 
-		const {runId, userId: id} =  await prisma.taskRun.create({
+		await prisma.taskRun.create({
 			data: {
 				runId: handle.id,
 				projectId: canonicalProjectId,
@@ -63,12 +62,8 @@ export async function POST(request: Request): Promise<Response> {
 			},
 		});
 
-		taskMap().set("checkStatus" + runId, id)
-
 		return Response.json({ runId: handle.id }, { status: 202 });
 	} catch (error) {
 		return handleApiError(error);
 	}
 }
-
-export const taskMap = cache(() => new Map<string, string>()) // cache per request for values
