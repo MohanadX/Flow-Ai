@@ -667,14 +667,11 @@ change.
   - Added project-level cache tagging to `fetchProjectData` in `lib/project-service.ts` and implemented comprehensive cache invalidation on all mutations (rename, delete, canvas save, spec generation) to keep ownership preconditions fresh.
   - Updated `enrichCollaborators` in `lib/collaborator-service.ts` to dynamically calculate the overall limit based on the `page` argument while still batching Clerk API requests in chunks of 100.
   - Separated `revalidateTag` from the `try/catch` block in `saveGeneratedSpec` (`lib/spec-service.ts`) so cache revalidation failures do not incorrectly trigger blob cleanup or undo the successful database insert.
-
 - 30-canvas-optimize:
-  - Optimized drag performance by replacing React state updates for preview coordinates with direct DOM manipulation (`transform: translate3d`) via `requestAnimationFrame`.
-  - Stored drag payload in a `useRef` to maintain active metadata without triggering component re-renders.
-  - Implemented stable throttling (33ms limit its like around 30 frame) for Liveblocks presence updates using a custom `useMemo` wrapper and utility `throttle` function.
+  - Managed drag preview position by updating React state (`setDragPreview`) with dynamic inline `left` and `top` positioning coordinates.
+  - Implemented stable throttling (33ms limit, approx. 30 FPS) for Liveblocks presence updates by instantiating the utility `throttle` function inside a standard `useEffect` and holding it in a `useRef` container.
   - Bound the throttled update to `handlePointerMove` on the canvas and shape panel to prevent network congestion during high-frequency mouse movements.
   - Ensured immediate `cursor: null` dispatch bypassing the throttle on `handlePointerLeave`.
-  - Refactored `<ShapeDragPreview>` to a `fixed` container driven entirely by the `translate3d` inline style manipulations.
 
 ## In Progress
 

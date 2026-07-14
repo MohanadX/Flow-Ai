@@ -102,12 +102,14 @@ function buildCanvasSummary(
 	});
 
 	const edgeLines = edges.map((edge) => {
-		const label = edge.data?.label
-			? ` ──(${normalizeInlineText(edge.data.label)})──>`
+		const normalizedLabel = edge.data?.label
+			? normalizeInlineText(edge.data.label)
+			: "";
+		const label = normalizedLabel
+			? ` ──(${normalizedLabel})──>`
 			: " ──>";
 
-		return `- ${edge.source}${label} ${edge.target}`;
-	});
+		return `- ${edge.source}${label} ${edge.target}`;	});
 
 	return [
 		"Nodes:",

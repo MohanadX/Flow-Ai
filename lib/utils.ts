@@ -59,30 +59,56 @@ export const generatePagination = (currentPage: number, totalPages: number) => {
 	];
 };
 
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function throttle<T extends (...args: any[]) => void>(
-	func: T,
-	limit: number
+    func: T,
+    limit: number
 ): T & { cancel: () => void } {
-	let inThrottle = false;
-	let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let inThrottle = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let lastArgs: Parameters<T> | null = null;
+    let lastThis: ThisParameterType<T> | null = null;
 
-	const throttled = function (this: ThisParameterType<T>, ...args: Parameters<T>) {
-		if (!inThrottle) {
-			func.apply(this, args);
-			inThrottle = true;
-			timeoutId = setTimeout(() => {
-				inThrottle = false;
-			}, limit);
-		}
-	} as unknown as T & { cancel: () => void };
+    const throttled = function (this: ThisParameterType<T>, ...args: Parameters<T>) {
+        if (!inThrottle) {
+            func.apply(this, args);
+            inThrottle = true;
+            
+            const runTimeout = () => {
+                timeoutId = setTimeout(() => {
+                    if (lastArgs) {
+                        // Invoke trailing call with the latest arguments and context
+                        func.apply(lastThis!, lastArgs);
+                        lastArgs = null;
+                        lastThis = null;
+                        // Restart the throttle window for the trailing invocation
+                        runTimeout();
+                    } else {
+                        inThrottle = false;
+                        timeoutId = null;
+                    }
+                }, limit);
+            };
+            
+            runTimeout();
+        } else {
+            // Retain the latest arguments and context for trailing execution
+            lastArgs = args;
+			// eslint-disable-next-line @typescript-eslint/no-this-alias
+            lastThis = this;
+        }
+    } as unknown as T & { cancel: () => void };
 
-	throttled.cancel = () => {
-		if (timeoutId) {
-			clearTimeout(timeoutId);
-		}
-		inThrottle = false;
-	};
+    throttled.cancel = () => {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+        }
+        lastArgs = null;
+        lastThis = null;
+        inThrottle = false;
+    };
 
-	return throttled;
+    return throttled;
 }

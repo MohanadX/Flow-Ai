@@ -245,8 +245,7 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 			if (abortController.signal.aborted) return;
 
 			const { data: designData } = await apiClient.post<{
-				runId?: string;
-				taskUserId?: string;
+				runId?: unknown;
 			}>(
 				"/api/ai/design",
 				{
@@ -259,21 +258,13 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 			const nextRunId =
 				typeof designData.runId === "string" ? designData.runId : undefined;
 
-			const nextTaskUserId =
-				typeof designData.taskUserId === "string" ? designData.taskUserId : undefined;
-
 			if (!nextRunId) {
 				throw new Error("Design run id is missing from API response.");
 			}
 
-			if (!nextTaskUserId) {
-				throw new Error("Task run id is missing from API response.");
-			}
-
-
 			const { data: tokenData } = await apiClient.post<{ token?: unknown }>(
 				"/api/ai/design/token",
-				{ runId: nextRunId, taskUserId: nextTaskUserId },
+				{ runId: nextRunId },
 				{ signal: abortController.signal },
 			);
 			const nextPublicToken =
@@ -920,7 +911,7 @@ function SpecGenerationButton({
 				edges,
 			};
 			const { data: specData } = await apiClient.post<
-			{ runId?: string, taskUserId?: string }>(
+			{ runId?: unknown }>(
 				"/api/ai/spec",
 				payload,
 				{ signal: abortController.signal },
@@ -928,23 +919,15 @@ function SpecGenerationButton({
 			const nextRunId =
 				typeof specData.runId === "string" ? specData.runId : undefined;
 
-			const nextTaskUserId =
-				typeof specData.taskUserId === "string" ? specData.taskUserId : undefined;
-
 			if (!nextRunId) {
 				throw new Error("Spec run id is missing from API response.");
 			}
-
-			if (!nextTaskUserId) {
-				throw new Error("Spec run taskUserId is missing from API response.");
-			}
-
+			
 			const { data: tokenData } = await apiClient.post<{ token?: unknown }>(
 				"/api/ai/spec/token",
-				{ runId: nextRunId, userId: nextTaskUserId },
+				{ runId: nextRunId },
 				{ signal: abortController.signal },
-			);
-			const nextPublicToken =
+			);			const nextPublicToken =
 				typeof tokenData.token === "string" ? tokenData.token : undefined;
 
 			if (!nextPublicToken) {

@@ -2,6 +2,7 @@ import { auth } from "@trigger.dev/sdk";
 
 import { requireUserId } from "@/lib/api-auth";
 import { ApiError, handleApiError, readJsonObject } from "@/lib/api-response";
+import { taskMap } from "../route";
 
 export async function POST(request: Request): Promise<Response> {
 	try {
@@ -12,16 +13,16 @@ export async function POST(request: Request): Promise<Response> {
 
 		const runId =
 			typeof body.runId === "string" ? body.runId.trim() : "";
-		const taskUserId =
-			typeof body.taskUserId === "string" ? body.taskUserId.trim() : "";
-
+		
 		if (!runId) {
 			throw new ApiError(400, "MISSING_RUN_ID", "runId is required.");
 		}
 	
 
+		const taskUserId = taskMap().get("checkStatus" + runId)
+		
 		if (!taskUserId) {
-			throw new ApiError(404, "RUN_NOT_FOUND", "Task run not found.");
+			throw new ApiError(400, "MISSING_TASK_USER_ID", "taskUserId is required.");
 		}
 
 		if (taskUserId !== userId) {

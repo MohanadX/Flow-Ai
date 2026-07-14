@@ -240,9 +240,9 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 		enabled: isCanvasLoadChecked,
 	});
 
-	// if (!isCanvasLoadChecked && (nodes.length > 0 || edges.length > 0)) {
-	// 	setIsCanvasLoadChecked(true);
-	// } finally in next fetch will handle this
+	if (!isCanvasLoadChecked && (nodes.length > 0 || edges.length > 0)) {
+		setIsCanvasLoadChecked(true);
+	}
 
 	useEffect(() => {
 		latestCanvasCountRef.current = {
@@ -1104,8 +1104,7 @@ function ShapeDragPreview({
 		<div
 			className="pointer-events-none fixed left-0 top-0 z-50 opacity-55"
 			style={{
-				left: preview.x - preview.width / 2,
-				top: preview.y - preview.height / 2,
+				transform: `translate(${preview.x - preview.width / 2}px, ${preview.y - preview.height / 2}px)`,
 				width: preview.width,
 				height: preview.height,
 				willChange: "transform",

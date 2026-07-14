@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { checkProjectAccess } from "@/lib/project-access";
 import type { generateSpec } from "@/trigger/generate-spec";
 import { generateSpecRequestSchema } from "@/types/spec-generation";
+import { cache } from "react";
 
 export async function POST(request: Request): Promise<Response> {
 	try {
@@ -44,17 +45,20 @@ export async function POST(request: Request): Promise<Response> {
 			edges,
 		});
 
-		const { userId: taskUserId } = await prisma.taskRun.create({
+		const { userId: taskUserId, runId } = await prisma.taskRun.create({
 			data: {
 				runId: handle.id,
 				projectId: canonicalProjectId,
 				userId,
 			},
-			select: { userId: true },
 		});
+
+		taskSpecMap().set(runId, userId)
 
 		return Response.json({ runId: handle.id, taskUserId }, { status: 202 });
 	} catch (error) {
 		return handleApiError(error);
 	}
 }
+
+export const taskSpecMap = cache(() => new Map<string, string>())
