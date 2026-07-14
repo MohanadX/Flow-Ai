@@ -646,10 +646,10 @@ change.
 - RoomProvider missing fix (page-2+ project navigation):
   - Root cause: `EditorChrome`'s `activeProject` `useMemo` searched only the SSR page-1 `ownedProjects` prop; clicking a page-2+ project returned `null`, so `RoomProvider` was never rendered and `CollaborativeCanvas` crashed with "RoomProvider is missing from the React tree."
   - Initial attempt (client-side only): `openProject` in `hooks/use-project-actions.ts` already calls `setActiveProject(project)` before `router.push`. Added a fallback in `EditorChrome`'s `activeProject` `useMemo` that checks `projectActions.activeProject` (the hook's own dialog-context state) when the list-search returns nothing and the IDs match. This handled sidebar clicks but not direct URL visits.
-  - Final fix (Option A + Race Condition handling): 
-    - Added a `GET` handler to `app/api/projects/[projectId]/route.ts` to return the serialized project. 
+  - Final fix (Option A + Race Condition handling):
+    - Added a `GET` handler to `app/api/projects/[projectId]/route.ts` to return the serialized project.
     - Updated `EditorChrome` to use React Query's `useQuery` to fetch the project on demand when it's missing from the SSR lists and hook state.
-    - Fixed a race condition where the `[projectId]/page.tsx` server component (which mounts `CollaborativeCanvas`) would render *before* the React Query fetch completed. By temporarily swapping `children` for a loading spinner while `isFetching` is true, we guarantee `CollaborativeCanvas` cannot mount until the `RoomProvider` is fully established.
+    - Fixed a race condition where the `[projectId]/page.tsx` server component (which mounts `CollaborativeCanvas`) would render _before_ the React Query fetch completed. By temporarily swapping `children` for a loading spinner while `isFetching` is true, we guarantee `CollaborativeCanvas` cannot mount until the `RoomProvider` is fully established.
 - Collaborator list request optimization:
   - Updated `getCollaborators` in `lib/collaborator-service.ts` to group independent Clerk and Prisma work with clean `Promise.all` calls.
   - Project lookup and Clerk client resolution now start together before the access check.
@@ -667,6 +667,14 @@ change.
   - Added project-level cache tagging to `fetchProjectData` in `lib/project-service.ts` and implemented comprehensive cache invalidation on all mutations (rename, delete, canvas save, spec generation) to keep ownership preconditions fresh.
   - Updated `enrichCollaborators` in `lib/collaborator-service.ts` to dynamically calculate the overall limit based on the `page` argument while still batching Clerk API requests in chunks of 100.
   - Separated `revalidateTag` from the `try/catch` block in `saveGeneratedSpec` (`lib/spec-service.ts`) so cache revalidation failures do not incorrectly trigger blob cleanup or undo the successful database insert.
+
+- 30-canvas-optimize:
+  - Optimized drag performance by replacing React state updates for preview coordinates with direct DOM manipulation (`transform: translate3d`) via `requestAnimationFrame`.
+  - Stored drag payload in a `useRef` to maintain active metadata without triggering component re-renders.
+  - Implemented stable throttling (33ms limit its like around 30 frame) for Liveblocks presence updates using a custom `useMemo` wrapper and utility `throttle` function.
+  - Bound the throttled update to `handlePointerMove` on the canvas and shape panel to prevent network congestion during high-frequency mouse movements.
+  - Ensured immediate `cursor: null` dispatch bypassing the throttle on `handlePointerLeave`.
+  - Refactored `<ShapeDragPreview>` to a `fixed` container driven entirely by the `translate3d` inline style manipulations.
 
 ## In Progress
 

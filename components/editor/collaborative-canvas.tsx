@@ -4,13 +4,13 @@ import {
 	type ComponentType,
 	type DragEvent,
 	type KeyboardEvent,
-	type PointerEvent,
 	type ReactNode,
 	useCallback,
 	useEffect,
-	useMemo,
 	useRef,
 	useState,
+	useTransition,
+	memo,
 } from "react";
 import {
 	Cursors,
@@ -44,6 +44,7 @@ import {
 	useReactFlow,
 	type NodeProps,
 	EdgeChange,
+	DefaultEdgeOptions,
 } from "@xyflow/react";
 import {
 	Circle,
@@ -68,7 +69,7 @@ import { CanvasErrorBoundary } from "@/components/editor/canvas-error-boundary";
 import { PresenceAvatars } from "@/components/editor/presence-avatars";
 import { Button } from "@/components/ui/button";
 import { apiClient, getApiClientErrorMessage } from "@/lib/api-client";
-import { cn } from "@/lib/utils";
+import { cn, throttle } from "@/lib/utils";
 import { useAiStatus } from "@/components/editor/editor-chrome";
 import {
 	CANVAS_EDGE_TYPE,
@@ -108,6 +109,7 @@ interface ShapePanelProps {
 	) => void;
 	onShapeDragMove: (event: DragEvent<HTMLButtonElement>) => void;
 	onShapeDragEnd: () => void;
+	onPointerPresence: (event: React.PointerEvent<HTMLDivElement>) => void;
 }
 
 type ShapeDragPreviewState = ShapeDragPayload & {
@@ -154,6 +156,27 @@ interface BaseCanvasProps {
 	roomId: string;
 }
 
+const nodeTypes = {
+    [CANVAS_NODE_TYPE]: CanvasNodeRenderer,
+} satisfies NodeTypes;
+
+const edgeTypes = {
+    [CANVAS_EDGE_TYPE]: CanvasEdgeRenderer,
+} satisfies EdgeTypes;
+
+const defaultEdgeOptions = {
+    type: CANVAS_EDGE_TYPE,
+    markerEnd: {
+        type: "arrowclosed" as const,
+        width: 14,
+        height: 14,
+        color: "var(--color-copy-faint)",
+    },
+    style: {
+        strokeLinecap: "round" as const,
+    },
+} satisfies DefaultEdgeOptions;
+
 function BaseCanvas({ roomId }: BaseCanvasProps) {
 	const { onAiStatus } = useAiStatus();
 	const reactFlowInstanceRef = useRef<ReactFlowInstance<
@@ -162,14 +185,36 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 	> | null>(null);
 	const latestCanvasCountRef = useRef({ nodes: 0, edges: 0 });
 	const nodeCounterRef = useRef(0);
-	const [dragPreview, setDragPreview] = useState<ShapeDragPreviewState | null>(
-		null,
-	);
+	const [dragPreview, setDragPreview] = useState<ShapeDragPreviewState  | null>(null);
 	const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
 	const [isTemplatesModalMounted, setIsTemplatesModalMounted] = useState(false);
 	const [isCanvasLoadChecked, setIsCanvasLoadChecked] = useState(false);
 	const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
+	const [, startTransition] = useTransition()
 	const updateMyPresence = useUpdateMyPresence();
+	const updateMyPresenceRef = useRef(updateMyPresence);
+
+	const handleDragCleanup = useCallback(() => {
+		setDragPreview(null)
+	}, [])
+	useEffect(() => {
+		updateMyPresenceRef.current = updateMyPresence;
+	}, [updateMyPresence]);
+
+	// hold the throttled function instance safely
+	const throttledUpdateMyPresenceRef = useRef<
+		ReturnType<typeof throttle<(presence: Parameters<typeof updateMyPresence>[0]) => void>> | null
+	>(null);
+
+	// create and cleanup throttled function only once
+	useEffect(() => {
+		throttledUpdateMyPresenceRef.current = throttle((presence) => {
+			updateMyPresenceRef.current(presence);
+		}, 33);
+
+		return () => throttledUpdateMyPresenceRef.current?.cancel();
+	}, []);
+
 	const closeTemplatesModal = useCallback(() => setIsTemplatesModalOpen(false), [])
 	// Bridge ai-status-feed events out of the RoomProvider to the AiStatusContext.
 	useEventListener(({ event }) => {
@@ -178,35 +223,6 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 		onAiStatus(event.payload.text);
 	});
 
-	const nodeTypes = useMemo(
-		() =>
-			({
-				[CANVAS_NODE_TYPE]: CanvasNodeRenderer,
-			}) satisfies NodeTypes,
-		[],
-	);
-	const edgeTypes = useMemo(
-		() =>
-			({
-				[CANVAS_EDGE_TYPE]: CanvasEdgeRenderer,
-			}) satisfies EdgeTypes,
-		[],
-	);
-	const defaultEdgeOptions = useMemo(
-		() => ({
-			type: CANVAS_EDGE_TYPE,
-			markerEnd: {
-				type: "arrowclosed" as const,
-				width: 14,
-				height: 14,
-				color: "var(--color-copy-faint)",
-			},
-			style: {
-				strokeLinecap: "round" as const,
-			},
-		}),
-		[],
-	);
 	const { nodes, edges, onNodesChange, onEdgesChange, onConnect, onDelete } =
 		useLiveblocksFlow<CanvasNode, CanvasEdge>({
 			suspense: true,
@@ -224,9 +240,9 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 		enabled: isCanvasLoadChecked,
 	});
 
-	if (!isCanvasLoadChecked && (nodes.length > 0 || edges.length > 0)) {
-		setIsCanvasLoadChecked(true);
-	}
+	// if (!isCanvasLoadChecked && (nodes.length > 0 || edges.length > 0)) {
+	// 	setIsCanvasLoadChecked(true);
+	// } finally in next fetch will handle this
 
 	useEffect(() => {
 		latestCanvasCountRef.current = {
@@ -260,6 +276,8 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 				const latestCount = latestCanvasCountRef.current;
 
 				if (snapshot && latestCount.nodes === 0 && latestCount.edges === 0) {
+					startTransition(() => {
+						
 					if (snapshot.nodes.length > 0) {
 						onNodesChange(
 							snapshot.nodes.map((node) => ({
@@ -277,6 +295,7 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 							})),
 						);
 					}
+					})
 
 					timeoutId = window.setTimeout(() => {
 						reactFlowInstanceRef.current?.fitView({ duration: 350 });
@@ -339,8 +358,10 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 			...template.edges.map((e) => ({ type: "add" as const, item: e })),
 		];
 
-		onNodesChange(nodeChanges);
-		onEdgesChange(edgeChanges);
+		startTransition(() => {
+			onNodesChange(nodeChanges);
+			onEdgesChange(edgeChanges);
+		})
 
 		setTimeout(() => {
 			reactFlowInstance.fitView({ duration: 500 });
@@ -362,16 +383,11 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 		event: DragEvent<HTMLButtonElement | HTMLDivElement>,
 	) => {
 		if (event.clientX === 0 && event.clientY === 0) return;
-
-		setDragPreview((preview) =>
-			preview
-				? {
-						...preview,
-						x: event.clientX,
-						y: event.clientY,
-					}
-				: preview,
-		);
+		setDragPreview(prev => prev ? {
+			...prev,
+			x: event.clientX,
+			y: event.clientY,
+		} : null);
 	}, []);
 
 	const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
@@ -384,7 +400,7 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 
 	const handleDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
 		event.preventDefault();
-		setDragPreview(null);
+		handleDragCleanup();
 
 		const payload = readShapeDragPayload(event);
 		const reactFlowInstance = reactFlowInstanceRef.current;
@@ -420,19 +436,18 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 		const changes: NodeChange<CanvasNode>[] = [{ type: "add", item: node }];
 
 		onNodesChange(changes);
-	}, [onNodesChange]);
+	}, [onNodesChange, handleDragCleanup]);
 
 	const handleShapeDragStart = useCallback((
 		event: DragEvent<HTMLButtonElement>,
 		shape: NodeShape,
 	) => {
 		const payload = startShapeDrag(event, shape);
-
 		setDragPreview({
 			...payload,
 			x: event.clientX,
 			y: event.clientY,
-		});
+		})
 	}, []);
 
 	const handleShapeDragMove = useCallback((event: DragEvent<HTMLButtonElement>) => {
@@ -443,15 +458,16 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 		const reactFlowInstance = reactFlowInstanceRef.current;
 		if (!reactFlowInstance) return;
 
-		updateMyPresence({
+		throttledUpdateMyPresenceRef.current?.({
 			cursor: reactFlowInstance.screenToFlowPosition({
 				x: event.clientX,
 				y: event.clientY,
 			}),
 		});
-	}, [updateMyPresence]);
+	}, []);
 
 	const handlePointerLeave = useCallback(() => {
+		throttledUpdateMyPresenceRef.current?.cancel();
 		updateMyPresence({ cursor: null });
 	}, [updateMyPresence]);
 
@@ -480,6 +496,7 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 				}}
 				connectionMode={ConnectionMode.Loose}
 				fitView
+				onlyRenderVisibleElements={true}
 			>
 				<Cursors components={{ Cursor: CanvasCursor }} />
 				<Background variant={BackgroundVariant.Dots} />
@@ -495,7 +512,8 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 				<ShapePanel
 					onShapeDragStart={handleShapeDragStart}
 					onShapeDragMove={handleShapeDragMove}
-					onShapeDragEnd={() => setDragPreview(null)}
+					onShapeDragEnd={handleDragCleanup}
+					onPointerPresence={handlePointerMove}
 				/>
 				<PresenceAvatars />
 			</ReactFlow>
@@ -666,24 +684,13 @@ function ShapePanel({
 	onShapeDragStart,
 	onShapeDragMove,
 	onShapeDragEnd,
+	onPointerPresence,
 }: ShapePanelProps) {
-	const reactFlow = useReactFlow<CanvasNode, CanvasEdge>();
-	const updateMyPresence = useUpdateMyPresence();
-
-	const handlePointerPresence = useCallback((event: PointerEvent<HTMLDivElement>) => {
-		updateMyPresence({
-			cursor: reactFlow.screenToFlowPosition({
-				x: event.clientX,
-				y: event.clientY,
-			}),
-		});
-	}, [reactFlow, updateMyPresence]);
-
 	return (
 		<div
 			className="pointer-events-auto absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full border border-surface-border bg-surface/90 p-1.5 shadow-2xl shadow-black/40 backdrop-blur"
-			onPointerEnter={handlePointerPresence}
-			onPointerMove={handlePointerPresence}
+			onPointerEnter={onPointerPresence}
+			onPointerMove={onPointerPresence}
 		>
 			{SHAPE_TOOLS.map(({ shape, label, Icon }) => (
 				<Button
@@ -1046,14 +1053,16 @@ function CanvasNodeHandles() {
 	);
 }
 
-function CanvasCursor({ connectionId }: CursorsCursorProps) {
-	const info = useOther(connectionId, (other) => other.info);
+const CanvasCursor = memo(function CanvasCursor({ connectionId }: CursorsCursorProps) {
+	// subscribe only to the exact primitive values we need so that cursor coordinates updates don't trigger updates
+	const displayName = useOther(connectionId, (other) => other.info?.displayName);
+	const cursorColor = useOther(connectionId, (other) => other.info?.cursorColor || "#000");
 	const isThinking = useOther(
 		connectionId,
 		(other) => other.presence.isThinking,
 	);
 
-	if (!info) return null;
+	if (!displayName) return null;
 
 	return (
 		<div className="pointer-events-none relative -left-1 -top-1 flex flex-col items-start drop-shadow-md">
@@ -1061,7 +1070,7 @@ function CanvasCursor({ connectionId }: CursorsCursorProps) {
 				width="24"
 				height="24"
 				viewBox="0 0 24 24"
-				fill={info.cursorColor || "#000"}
+				fill={cursorColor || "#000"}
 				stroke="white"
 				strokeWidth="1.5"
 				xmlns="http://www.w3.org/2000/svg"
@@ -1070,16 +1079,19 @@ function CanvasCursor({ connectionId }: CursorsCursorProps) {
 			</svg>
 			<div
 				className="ml-4 -mt-1 flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-white"
-				style={{ backgroundColor: info.cursorColor || "#000" }}
+				style={{ backgroundColor: cursorColor || "#000" }}
 			>
 				{isThinking && (
 					<Loader2 className="h-2.5 w-2.5 animate-spin opacity-80" />
 				)}
-				{info.displayName}
+				{displayName}
 			</div>
 		</div>
 	);
-}
+}, (prevProps, nextProps) => {
+	// Only re-render if connectionId changes
+	return prevProps.connectionId === nextProps.connectionId;
+});
 
 function ShapeDragPreview({
 	preview,
@@ -1090,12 +1102,13 @@ function ShapeDragPreview({
 
 	return (
 		<div
-			className="pointer-events-none fixed z-50 opacity-55"
+			className="pointer-events-none fixed left-0 top-0 z-50 opacity-55"
 			style={{
 				left: preview.x - preview.width / 2,
 				top: preview.y - preview.height / 2,
 				width: preview.width,
 				height: preview.height,
+				willChange: "transform",
 			}}
 		>
 			<ShapeSurface

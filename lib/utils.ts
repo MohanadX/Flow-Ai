@@ -58,3 +58,31 @@ export const generatePagination = (currentPage: number, totalPages: number) => {
 		totalPages,
 	];
 };
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function throttle<T extends (...args: any[]) => void>(
+	func: T,
+	limit: number
+): T & { cancel: () => void } {
+	let inThrottle = false;
+	let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+	const throttled = function (this: ThisParameterType<T>, ...args: Parameters<T>) {
+		if (!inThrottle) {
+			func.apply(this, args);
+			inThrottle = true;
+			timeoutId = setTimeout(() => {
+				inThrottle = false;
+			}, limit);
+		}
+	} as unknown as T & { cancel: () => void };
+
+	throttled.cancel = () => {
+		if (timeoutId) {
+			clearTimeout(timeoutId);
+		}
+		inThrottle = false;
+	};
+
+	return throttled;
+}

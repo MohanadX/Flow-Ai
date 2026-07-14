@@ -85,6 +85,11 @@ ${chatSummary}`,
 	},
 });
 
+/** 
+ * LLMs do not need UI coordinate systems (x, y) or component sizes (e.g., "180x60") 
+ * to generate a backend architectural spec. Stripping them saves token window context, 
+ * minimizes prompt noise, and keeps Gemini's attention on logical connections.
+ */
 function buildCanvasSummary(
 	nodes: GenerateSpecPayload["nodes"],
 	edges: GenerateSpecPayload["edges"],
@@ -92,21 +97,16 @@ function buildCanvasSummary(
 	const nodeLines = nodes.map((node) => {
 		const label = normalizeInlineText(node.data?.label || "Untitled");
 		const shape = node.data?.shape ? `, shape: ${node.data.shape}` : "";
-		const size =
-			node.width && node.height ? `, size: ${node.width}x${node.height}` : "";
-		const position = node.position
-			? `, position: (${node.position.x}, ${node.position.y})`
-			: "";
 
-		return `- Node ${node.id}: ${label}${shape}${size}${position}`;
+		return `- Node ${node.id}: ${label}${shape}`;
 	});
 
 	const edgeLines = edges.map((edge) => {
 		const label = edge.data?.label
-			? ` (${normalizeInlineText(edge.data.label)})`
-			: "";
+			? ` ──(${normalizeInlineText(edge.data.label)})──>`
+			: " ──>";
 
-		return `- Edge ${edge.id}: ${edge.source} -> ${edge.target}${label}`;
+		return `- ${edge.source}${label} ${edge.target}`;
 	});
 
 	return [

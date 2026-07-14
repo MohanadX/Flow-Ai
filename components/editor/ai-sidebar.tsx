@@ -12,6 +12,7 @@ import {
 } from "react";
 import type { JsonObject } from "@liveblocks/core";
 import {
+	shallow,
 	useCreateFeed,
 	useCreateFeedMessage,
 	useFeedMessages,
@@ -244,8 +245,8 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 			if (abortController.signal.aborted) return;
 
 			const { data: designData } = await apiClient.post<{
-				runId?: unknown;
-				publicToken?: unknown;
+				runId?: string;
+				taskUserId?: string;
 			}>(
 				"/api/ai/design",
 				{
@@ -257,26 +258,26 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 			);
 			const nextRunId =
 				typeof designData.runId === "string" ? designData.runId : undefined;
-			const tokenFromDesign =
-				typeof designData.publicToken === "string"
-					? designData.publicToken
-					: undefined;
+
+			const nextTaskUserId =
+				typeof designData.taskUserId === "string" ? designData.taskUserId : undefined;
 
 			if (!nextRunId) {
 				throw new Error("Design run id is missing from API response.");
 			}
 
-			let nextPublicToken = tokenFromDesign;
-
-			if (!nextPublicToken) {
-				const { data: tokenData } = await apiClient.post<{ token?: unknown }>(
-					"/api/ai/design/token",
-					{ runId: nextRunId },
-					{ signal: abortController.signal },
-				);
-				nextPublicToken =
-					typeof tokenData.token === "string" ? tokenData.token : undefined;
+			if (!nextTaskUserId) {
+				throw new Error("Task run id is missing from API response.");
 			}
+
+
+			const { data: tokenData } = await apiClient.post<{ token?: unknown }>(
+				"/api/ai/design/token",
+				{ runId: nextRunId, taskUserId: nextTaskUserId },
+				{ signal: abortController.signal },
+			);
+			const nextPublicToken =
+				typeof tokenData.token === "string" ? tokenData.token : undefined;
 
 			if (!nextPublicToken) {
 				throw new Error("Run public token is missing.");
@@ -918,7 +919,8 @@ function SpecGenerationButton({
 				nodes,
 				edges,
 			};
-			const { data: specData } = await apiClient.post<{ runId?: unknown }>(
+			const { data: specData } = await apiClient.post<
+			{ runId?: string, taskUserId?: string }>(
 				"/api/ai/spec",
 				payload,
 				{ signal: abortController.signal },
@@ -926,13 +928,20 @@ function SpecGenerationButton({
 			const nextRunId =
 				typeof specData.runId === "string" ? specData.runId : undefined;
 
+			const nextTaskUserId =
+				typeof specData.taskUserId === "string" ? specData.taskUserId : undefined;
+
 			if (!nextRunId) {
 				throw new Error("Spec run id is missing from API response.");
 			}
 
+			if (!nextTaskUserId) {
+				throw new Error("Spec run taskUserId is missing from API response.");
+			}
+
 			const { data: tokenData } = await apiClient.post<{ token?: unknown }>(
 				"/api/ai/spec/token",
-				{ runId: nextRunId },
+				{ runId: nextRunId, userId: nextTaskUserId },
 				{ signal: abortController.signal },
 			);
 			const nextPublicToken =
@@ -941,6 +950,7 @@ function SpecGenerationButton({
 			if (!nextPublicToken) {
 				throw new Error("Spec run public token is missing.");
 			}
+
 
 			if (abortController.signal.aborted) return;
 			onRunStarted(nextRunId, nextPublicToken);
@@ -1063,7 +1073,7 @@ function useCanvasNodes(): CanvasNode[] {
 	const nodesMap = useStorage((storage) => {
 		const flow = (storage as unknown as FlowStorageSnapshot).flow;
 		return flow?.nodes ?? null;
-	});
+	}, shallow);
 
 	return useMemo(() => {
 		if (!nodesMap) return [];
@@ -1075,7 +1085,7 @@ function useCanvasEdges(): CanvasEdge[] {
 	const edgesMap = useStorage((storage) => {
 		const flow = (storage as unknown as FlowStorageSnapshot).flow;
 		return flow?.edges ?? null;
-	});
+	}, shallow);
 
 	return useMemo(() => {
 		if (!edgesMap) return [];

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { apiClient, getApiClientErrorMessage } from "@/lib/api-client";
 import type {
 	CanvasEdge,
@@ -23,7 +23,7 @@ interface UseCanvasAutosaveResult {
 	lastSavedAt: string | null;
 }
 
-const DEFAULT_AUTOSAVE_DEBOUNCE_MS = 1200;
+const DEFAULT_AUTOSAVE_DEBOUNCE_MS = 2000;
 
 export function useCanvasAutosave({
 	projectId,
@@ -37,10 +37,13 @@ export function useCanvasAutosave({
 	const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
 	const lastPayloadRef = useRef<string | null>(null);
 
+	// Defer the heavy props so they "lag" behind active drags (like transition but with values)
+	const deferredNodes = useDeferredValue(nodes);
+	const deferredEdges = useDeferredValue(edges);
 	useEffect(() => {
 		if (!enabled) return;
 
-		const payload = JSON.stringify({ nodes, edges });
+		const payload = JSON.stringify({ deferredNodes, deferredEdges });
 
 		if (payload === lastPayloadRef.current) return;
 
@@ -53,7 +56,7 @@ export function useCanvasAutosave({
 				try {
 					const { data } = await apiClient.put<unknown>(
 						`/api/projects/${projectId}/canvas`,
-						{ nodes, edges },
+						{ nodes: deferredNodes, edges: deferredEdges },
 					);
 
 					if (!isCurrentSave) return;
@@ -81,7 +84,7 @@ export function useCanvasAutosave({
 			isCurrentSave = false;
 			window.clearTimeout(timeoutId);
 		};
-	}, [debounceMs, edges, enabled, nodes, projectId]);
+	}, [debounceMs, deferredEdges, enabled, deferredNodes, projectId]);
 
 	return { status, errorMessage, lastSavedAt };
 }

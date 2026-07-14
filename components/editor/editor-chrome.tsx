@@ -222,7 +222,12 @@ export function EditorChrome({
 							/>
 						)}
 						{activeProject ? (
-							<LiveblocksProvider authEndpoint="/api/liveblocks-auth">
+							<LiveblocksProvider authEndpoint="/api/liveblocks-auth" 
+							lostConnectionTimeout={5000}
+							throttle={80} //Sets WebSocket updates to ~30fps (32ms interval) instead of the default 100ms
+							backgroundKeepAliveTimeout={120000} // Disconnects after 2 minutes of idle background inactivity
+							>
+								
 								<RoomProvider
 									id={activeProject.id}
 									initialPresence={{ cursor: null, isThinking: false }}

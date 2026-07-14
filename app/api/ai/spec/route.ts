@@ -44,15 +44,16 @@ export async function POST(request: Request): Promise<Response> {
 			edges,
 		});
 
-		await prisma.taskRun.create({
+		const { userId: taskUserId } = await prisma.taskRun.create({
 			data: {
 				runId: handle.id,
 				projectId: canonicalProjectId,
 				userId,
 			},
+			select: { userId: true },
 		});
 
-		return Response.json({ runId: handle.id }, { status: 202 });
+		return Response.json({ runId: handle.id, taskUserId }, { status: 202 });
 	} catch (error) {
 		return handleApiError(error);
 	}
