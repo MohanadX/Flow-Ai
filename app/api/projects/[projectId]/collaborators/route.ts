@@ -2,10 +2,10 @@ import { requireUserId } from "@/lib/api-auth";
 import { handleApiError, readJsonObject } from "@/lib/api-response";
 import {
 	addCollaborator,
-	assertProjectOwner,
 	getCollaborators,
 	normalizeCollaboratorEmail,
 } from "@/lib/collaborator-service";
+import { assertProjectOwner } from "@/lib/project-service";
 
 interface CollaboratorRouteContext {
 	params: Promise<{ projectId: string }>;

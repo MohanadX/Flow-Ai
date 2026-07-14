@@ -376,7 +376,7 @@ async function recordPendingLiveblocksCleanup(
 	`;
 }
 
-async function assertProjectOwner(
+export async function assertProjectOwner(
 	projectId: string,
 	ownerId: string,
 ): Promise<void> {

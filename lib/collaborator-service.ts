@@ -33,25 +33,7 @@ export function normalizeCollaboratorEmail(email: unknown): string {
 	return normalized;
 }
 
-export async function assertProjectOwner(
-	projectId: string,
-	userId: string,
-): Promise<void> {
-	const project = await prisma.project.findUnique({
-		where: { id: projectId },
-		select: { ownerId: true },
-	});
-	if (!project) {
-		throw new ApiError(404, "NOT_FOUND", "Project not found.");
-	}
-	if (project.ownerId !== userId) {
-		throw new ApiError(
-			403,
-			"FORBIDDEN",
-			"Only the project owner can manage collaborators.",
-		);
-	}
-}
+
 
 export async function getCollaborators(
 	projectId: string,

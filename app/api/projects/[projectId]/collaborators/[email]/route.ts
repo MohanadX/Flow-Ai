@@ -1,9 +1,7 @@
 import { requireUserId } from "@/lib/api-auth";
 import { handleApiError } from "@/lib/api-response";
-import {
-	assertProjectOwner,
-	removeCollaborator,
-} from "@/lib/collaborator-service";
+import { removeCollaborator } from "@/lib/collaborator-service";
+import { assertProjectOwner } from "@/lib/project-service";
 import { pusherServer } from "@/lib/pusher-server";
 import { getUserProjectsChannel } from "@/lib/utils";
 import { after } from "next/server";
