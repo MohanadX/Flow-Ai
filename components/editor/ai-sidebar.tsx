@@ -696,10 +696,9 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 			</Dialog>
 		</div>
 	);
-
 }
 
-function ChatMessages({
+export function ChatMessages({
 	selfId,
 	onPickStarterPrompt,
 	isInputLocked,
@@ -708,14 +707,39 @@ function ChatMessages({
 	onPickStarterPrompt: (prompt: string) => void;
 	isInputLocked: boolean;
 }) {
-	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const [retryKey, setRetryKey] = useState(0);
 
-	// We append a dynamic query/suffix to the feed ID when we want to retry.
-    // Liveblocks ignores URL-like search params in the ID string, but the changing 
-    // string trick React/Liveblocks into resetting the fetch cache.
-    const activeFeedId = `${AI_CHAT_FEED_ID}?retry=${retryKey}`;
-	const feedMessagesResult = useFeedMessages(activeFeedId, { limit: 100 });
+	const handleRetry = () => {
+		// Incrementing the key forces React to tear down the inner component,
+		// resetting the hook and forcing a fresh connection/fetch.
+		setRetryKey((prev) => prev + 1);
+	};
+
+	return (
+		<ChatMessagesContent
+			key={retryKey} // force react compiler to re-render again
+			selfId={selfId}
+			onPickStarterPrompt={onPickStarterPrompt}
+			isInputLocked={isInputLocked}
+			onRetry={handleRetry}
+		/>
+	);
+}
+
+function ChatMessagesContent({
+	selfId,
+	onPickStarterPrompt,
+	isInputLocked,
+	onRetry,
+}: {
+	selfId: string | undefined;
+	onPickStarterPrompt: (prompt: string) => void;
+	isInputLocked: boolean;
+	onRetry: () => void;
+}) {
+	const messagesEndRef = useRef<HTMLDivElement>(null);
+
+	const feedMessagesResult = useFeedMessages(AI_CHAT_FEED_ID, { limit: 100 });
 	const isChatLoading =
 		"isLoading" in feedMessagesResult ? feedMessagesResult.isLoading : false;
 	const chatLoadError =
@@ -748,11 +772,6 @@ function ChatMessages({
 		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 	}, [messages]);
 
-	const handleRetry = () => {
-        // triggering a fresh network request!
-        setRetryKey((prev) => prev + 1);
-    };
-
 	if (isChatLoading) {
 		return (
 			<div className="flex h-full items-center justify-center gap-2 text-xs text-copy-muted">
@@ -770,7 +789,7 @@ function ChatMessages({
 					type="button"
 					variant="outline"
 					size="sm"
-					onClick={handleRetry}
+					onClick={onRetry}
 					className="h-8 gap-1.5"
 				>
 					<RefreshCw className="h-3.5 w-3.5" />
