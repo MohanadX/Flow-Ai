@@ -20,7 +20,7 @@ import {
 	useStatus,
 	useStorage,
 } from "@liveblocks/react";
-import { Bot, Download, FileText, Send, X, Loader2, Zap, RefreshCw } from "lucide-react";
+import { Bot, Download, FileText, Send, X, Loader2, Zap } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRealtimeRun } from "@trigger.dev/react-hooks";
 import { Button } from "@/components/ui/button";
