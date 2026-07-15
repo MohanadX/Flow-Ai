@@ -698,7 +698,7 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 	);
 }
 
-export function ChatMessages({
+function ChatMessages({
 	selfId,
 	onPickStarterPrompt,
 	isInputLocked,
@@ -706,39 +706,9 @@ export function ChatMessages({
 	selfId: string | undefined;
 	onPickStarterPrompt: (prompt: string) => void;
 	isInputLocked: boolean;
-}) {
-	const [retryKey, setRetryKey] = useState(0);
-
-	const handleRetry = () => {
-		// Incrementing the key forces React to tear down the inner component,
-		// resetting the hook and forcing a fresh connection/fetch.
-		setRetryKey((prev) => prev + 1);
-	};
-
-	return (
-		<ChatMessagesContent
-			key={retryKey} // force react compiler to re-render again
-			selfId={selfId}
-			onPickStarterPrompt={onPickStarterPrompt}
-			isInputLocked={isInputLocked}
-			onRetry={handleRetry}
-		/>
-	);
-}
-
-function ChatMessagesContent({
-	selfId,
-	onPickStarterPrompt,
-	isInputLocked,
-	onRetry,
-}: {
-	selfId: string | undefined;
-	onPickStarterPrompt: (prompt: string) => void;
-	isInputLocked: boolean;
-	onRetry: () => void;
 }) {
 	const messagesEndRef = useRef<HTMLDivElement>(null);
-
+	
 	const feedMessagesResult = useFeedMessages(AI_CHAT_FEED_ID, { limit: 100 });
 	const isChatLoading =
 		"isLoading" in feedMessagesResult ? feedMessagesResult.isLoading : false;
@@ -785,16 +755,7 @@ function ChatMessagesContent({
 		return (
 			<div className="flex h-full flex-col items-center justify-center gap-3 text-center text-xs">
 				<p className="text-error">Chat messages could not be loaded.</p>
-				<Button
-					type="button"
-					variant="outline"
-					size="sm"
-					onClick={onRetry}
-					className="h-8 gap-1.5"
-				>
-					<RefreshCw className="h-3.5 w-3.5" />
-					Retry
-				</Button>
+				<p className="text-warning">Try to refresh the page</p>
 			</div>
 		);
 	}
@@ -858,8 +819,7 @@ function ChatMessagesContent({
 			<div ref={messagesEndRef} />
 		</div>
 	);
-}
-
+}	
 
 
 function SpecGenerationButton({

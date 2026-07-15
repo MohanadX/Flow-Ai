@@ -3,7 +3,7 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { requireUserId } from "../api-auth";
 import { deleteProject } from "../project-service";
-import { updateTag } from "next/cache";
+import { refresh, updateTag } from "next/cache";
 import { getUserProjectsTag } from "@/cache/projects";
 
 export async function deleteProjectAction(projectId: string) {
@@ -30,6 +30,7 @@ export async function deleteProjectAction(projectId: string) {
 			updateTag(getUserProjectsTag(user.id)) // fetch instantly (not lazy)
 		})
 	}
+	refresh() // to make client fetch new data instantly
 
 	return {
 		project: {
