@@ -124,8 +124,8 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 		queryFn: async ({ signal }) => {
 			const result = await fetchProjectSpecs(projectId, signal, newSpec.current)
 			// here end revalidation logic from client to server then to client
-			newSpec.current = true;
-			return result
+			newSpec.current = false;
+			return result;
 		},
 		enabled: isOpen,
 	});
