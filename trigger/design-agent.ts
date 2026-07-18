@@ -1,7 +1,7 @@
-import { metadata, queue, retry, task, idempotencyKeys } from "@trigger.dev/sdk";
+import { metadata, queue, retry, task, idempotencyKeys, AbortTaskRunError } from "@trigger.dev/sdk";
 import { generateText, Output } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { Liveblocks } from "@liveblocks/node";
+import { Liveblocks, LiveblocksError } from "@liveblocks/node";
 import { mutateFlow } from "@liveblocks/react-flow/node";
 import { z } from "zod";
 
@@ -220,7 +220,6 @@ export const generatePlanTask = task({
 		try {
 			const { output } = await generateText({
 				model: google("gemini-2.5-flash"),
-				maxRetries: 5,
 				output: Output.object({
 					schema: generatedArchitectureSchema,
 				}),
@@ -254,8 +253,20 @@ Instructions:
 				deletedEdgeIds: output.deletedEdgeIds,
 			};
 		} catch (error) {
-			if (error instanceof Error && error.name === "AI_RetryError") {
-				console.error("Gemini is currently overloaded. Aborting plan task.", error);
+			if (error instanceof Error) {
+				const isFatal =
+					error.name === "TypeValidationError" ||
+					error.name === "JSONParseError" ||
+					error.name === "NoSuchModelError" ||
+					(error.name === "APICallError" && [400, 401, 403, 404].includes((error as unknown as { statusCode: number }).statusCode));
+
+				if (isFatal) {
+					throw new AbortTaskRunError(error.message);
+				}
+
+				if (error.name === "AI_RetryError") {
+					console.error("Gemini is currently overloaded. Aborting plan task.", error);
+				}
 			}
 			throw error;
 		}
@@ -279,12 +290,6 @@ export const applyMutationTask = task({
 export const designAgentTask = task({
 	id: "design-agent",
 	queue: sharedTriggerQueue,
-	retry: {
-		maxAttempts: 2, // Don't let a slow API waste run time
-		minTimeoutInMs: 2000,
-		maxTimeoutInMs: 10000,
-		factor: 2,
-	},
 	maxDuration: 300,
 	onFailure: async ({ payload }: { payload: DesignAgentPayload }) => {
 		await setPresence(
@@ -310,7 +315,11 @@ export const designAgentTask = task({
 				"json",
 			)) as Record<string, unknown>;
 		} catch (error) {
-			console.error("Could not fetch storage, might be empty", error);
+			if (error instanceof LiveblocksError && error.status === 404) {
+				console.error("Could not fetch storage, might be empty", error);
+			} else {
+				throw error;
+			}
 		}
 
 		const flow = currentStorage?.flow as Record<string, unknown> | undefined;

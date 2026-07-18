@@ -685,6 +685,11 @@ change.
   - Replaced the permanent failure branch inside `catch (error)` with an intermediate "Gemini is overloaded. Retrying..." state before rethrowing the error so Trigger.dev retries correctly.
   - Refactored `designAgentTask` as an orchestrator and separated `generatePlanTask` (LLM payload generation) from `applyMutationTask` (Liveblocks JSON Patch mutation).
   - Used Trigger.dev `idempotencyKeys` based on `ctx.run.id` for both subtasks, guaranteeing that task retries bypass already-completed AI generations or canvas mutations.
+- Consolidated AI agent retry logic and error propagation:
+  - Removed duplicate `maxRetries: 5` in `generateText` and `retry: { maxAttempts: 2 }` in `designAgentTask`. The `generatePlanTask` now exclusively handles transient AI retry attempts, preventing compounded provider calls.
+  - Re-classified strict AI SDK failures (schema mismatches, authentication, bad inputs like 400/401/403/404) as fatal by catching `TypeValidationError`, `JSONParseError`, `NoSuchModelError`, and `APICallError` and throwing `AbortTaskRunError` to abort the plan task without retries.
+- Refined Liveblocks storage fallback logic:
+  - Updated `getStorageDocument` try/catch block in `designAgentTask` to only fallback to empty storage when explicitly catching a `LiveblocksError` with `status === 404`. Any other status codes or unrelated errors are now re-thrown so the pipeline doesn't falsely assume the storage is empty.
 
 ## In Progress
 
