@@ -80,9 +80,9 @@ const starterPrompts = [
 
 export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 	const [prompt, setPrompt] = useState("");
-	const [submittingProjectId, setSubmittingProjectId] = useState<
-		string | null
-	>(null);
+	const [submittingProjectId, setSubmittingProjectId] = useState<string | null>(
+		null,
+	);
 	const [sendError, setSendError] = useState<string | undefined>();
 	const [runId, setRunId] = useState<string | undefined>();
 	const [publicToken, setPublicToken] = useState<string | undefined>();
@@ -118,11 +118,22 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 	const isSubmitting = submittingProjectId === projectId;
 	const isRunActive = !!runId;
 	const isSpecRunActive = !!specRunId;
+	const newSpec = useRef<boolean>(false);
 	const specsQuery = useQuery({
 		queryKey: specKeys.list(projectId),
-		queryFn: ({ signal }) => fetchProjectSpecs(projectId, signal),
+		queryFn: ({ signal }) =>
+			fetchProjectSpecs(projectId, signal, newSpec.current),
+
 		enabled: isOpen,
 	});
+
+	if(specsQuery.isError) {
+		console.error(specsQuery.error)
+	}
+
+	useEffect(() => {
+		newSpec.current = false; // here end revalidation logic from client to server then to client
+	}, [specsQuery.data?.length]);
 	const selectedSpecDownloadUrl = selectedSpec
 		? getSpecDownloadUrl(projectId, selectedSpec.id)
 		: undefined;
@@ -141,6 +152,10 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 		gcTime: 0,
 		staleTime: 0,
 	});
+
+	if (specPreviewQuery.isError) {
+		console.error(specPreviewQuery.error)
+	}
 
 	useEffect(() => {
 		isMountedRef.current = true;
@@ -194,22 +209,25 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 
 	const isInputLocked = !isFeedReady || isSubmitting || isRunActive;
 
-	const pushChatMessage = useCallback(async (payload: AiChatMessageData) => {
-		try {
-			await createFeedMessage(
-				AI_CHAT_FEED_ID,
-				payload as unknown as JsonObject,
-				{
-					id: `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-					createdAt: Date.now(),
-				},
-			);
-			setSendError(undefined);
-		} catch (error) {
-			console.error("Failed to push ai-chat message", error);
-			setSendError("Chat feed write failed.");
-		}
-	}, [createFeedMessage]);
+	const pushChatMessage = useCallback(
+		async (payload: AiChatMessageData) => {
+			try {
+				await createFeedMessage(
+					AI_CHAT_FEED_ID,
+					payload as unknown as JsonObject,
+					{
+						id: `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+						createdAt: Date.now(),
+					},
+				);
+				setSendError(undefined);
+			} catch (error) {
+				console.error("Failed to push ai-chat message", error);
+				setSendError("Chat feed write failed.");
+			}
+		},
+		[createFeedMessage],
+	);
 
 	async function submitPrompt(event?: FormEvent<HTMLFormElement>) {
 		event?.preventDefault();
@@ -278,10 +296,7 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 			setPublicToken(nextPublicToken);
 			setPrompt("");
 		} catch (err) {
-			if (
-				abortController.signal.aborted ||
-				isApiClientRequestCanceled(err)
-			) {
+			if (abortController.signal.aborted || isApiClientRequestCanceled(err)) {
 				return;
 			}
 
@@ -319,92 +334,100 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 		submitPrompt();
 	}
 
-	const handleRunFinished = useCallback(async (
-		status: "COMPLETED" | "FAILED" | "CANCELED",
-	) => {
-		const summary =
-			status === "COMPLETED"
-				? "Architecture generation completed."
-				: status === "FAILED"
-					? "Architecture generation failed."
-					: "Architecture generation was canceled.";
+	const handleRunFinished = useCallback(
+		async (status: "COMPLETED" | "FAILED" | "CANCELED") => {
+			const summary =
+				status === "COMPLETED"
+					? "Architecture generation completed."
+					: status === "FAILED"
+						? "Architecture generation failed."
+						: "Architecture generation was canceled.";
 
-		await pushChatMessage({
-			sender: {
-				id: "flow-ai",
-				name: "Flow AI",
-			},
-			role: "assistant",
-			content: summary,
-			timestamp: new Date().toISOString(),
-		});
-
-		setRunId(undefined);
-		setPublicToken(undefined);
-	}, [pushChatMessage]);
-
-	const handleSpecRunFinished = useCallback(async (
-		status: "COMPLETED" | "FAILED" | "CANCELED",
-	) => {
-		const summary =
-			status === "COMPLETED"
-				? "Spec generation completed."
-				: status === "FAILED"
-					? "Spec generation failed."
-					: "Spec generation was canceled.";
-
-		await pushChatMessage({
-			sender: {
-				id: "flow-ai",
-				name: "Flow AI",
-			},
-			role: "assistant",
-			content: summary,
-			timestamp: new Date().toISOString(),
-		});
-
-		if (status === "COMPLETED") {
-			await queryClient.invalidateQueries({
-				queryKey: specKeys.list(projectId),
+			await pushChatMessage({
+				sender: {
+					id: "flow-ai",
+					name: "Flow AI",
+				},
+				role: "assistant",
+				content: summary,
+				timestamp: new Date().toISOString(),
 			});
-		}
 
-		setSpecRunId(undefined);
-		setSpecPublicToken(undefined);
-	}, [projectId, queryClient, pushChatMessage]);
+			setRunId(undefined);
+			setPublicToken(undefined);
+		},
+		[pushChatMessage],
+	);
 
-	const handlePreviewOpenChange = useCallback((isPreviewOpen: boolean) => {
-		if (isPreviewOpen) return;
+	const handleSpecRunFinished = useCallback(
+		async (status: "COMPLETED" | "FAILED" | "CANCELED") => {
+			const summary =
+				status === "COMPLETED"
+					? "Spec generation completed."
+					: status === "FAILED"
+						? "Spec generation failed."
+						: "Spec generation was canceled.";
 
-		if (selectedSpec) {
-			queryClient.removeQueries({
-				queryKey: specKeys.preview(projectId, selectedSpec.id),
+			await pushChatMessage({
+				sender: {
+					id: "flow-ai",
+					name: "Flow AI",
+				},
+				role: "assistant",
+				content: summary,
+				timestamp: new Date().toISOString(),
 			});
-		}
-		setSelectedSpec(undefined);
-	}, [projectId, queryClient, selectedSpec]);
 
-	
+			if (status === "COMPLETED") {
+				newSpec.current = true;
+				await queryClient.invalidateQueries({
+					queryKey: specKeys.list(projectId),
+				});
+			}
 
-	const handleSpecGenerationRunStarted = useCallback((nextRunId: string, nextPublicToken: string) => {
-		setSpecRunId(nextRunId);
-		setSpecPublicToken(nextPublicToken);
-	}, []);
+			setSpecRunId(undefined);
+			setSpecPublicToken(undefined);
+		},
+		[projectId, queryClient, pushChatMessage],
+	);
 
-	
+	const handlePreviewOpenChange = useCallback(
+		(isPreviewOpen: boolean) => {
+			if (isPreviewOpen) return;
 
-	const handleSpecGenerationError = useCallback(async (message: string) => {
-		setSendError(message);
-		await pushChatMessage({
-			sender: {
-				id: "flow-ai",
-				name: "Flow AI",
-			},
-			role: "assistant",
-			content: message,
-			timestamp: new Date().toISOString(),
-		});
-	}, [pushChatMessage]);
+			if (selectedSpec) {
+				queryClient.removeQueries({
+					queryKey: specKeys.preview(projectId, selectedSpec.id),
+				});
+			}
+			setSelectedSpec(undefined);
+		},
+		[projectId, queryClient, selectedSpec],
+	);
+
+	const handleSpecGenerationRunStarted = useCallback(
+		(nextRunId: string, nextPublicToken: string) => {
+			setSpecRunId(nextRunId);
+			setSpecPublicToken(nextPublicToken);
+		},
+		[],
+	);
+
+	const handleSpecGenerationError = useCallback(
+		async (message: string) => {
+			setSendError(message);
+			await pushChatMessage({
+				sender: {
+					id: "flow-ai",
+					name: "Flow AI",
+				},
+				role: "assistant",
+				content: message,
+				timestamp: new Date().toISOString(),
+			});
+		},
+		[pushChatMessage],
+	);
 
 	return (
 		<div
@@ -496,7 +519,6 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 									requestAnimationFrame(resizeTextarea);
 								}}
 								isInputLocked={isInputLocked}
-								
 							/>
 						)}
 					</div>
@@ -586,7 +608,7 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 								Specs could not be loaded.
 							</div>
 						) : specsQuery.data?.length ? (
-							<div className="flex flex-col w-[81%] gap-2">
+							<div className="flex flex-col w-[80%] gap-2">
 								{specsQuery.data.map((spec) => (
 									<div
 										key={spec.id}
@@ -708,7 +730,7 @@ function ChatMessages({
 	isInputLocked: boolean;
 }) {
 	const messagesEndRef = useRef<HTMLDivElement>(null);
-	
+
 	const feedMessagesResult = useFeedMessages(AI_CHAT_FEED_ID, { limit: 100 });
 	const isChatLoading =
 		"isLoading" in feedMessagesResult ? feedMessagesResult.isLoading : false;
@@ -819,8 +841,7 @@ function ChatMessages({
 			<div ref={messagesEndRef} />
 		</div>
 	);
-}	
-
+}
 
 function SpecGenerationButton({
 	projectId,
@@ -833,9 +854,9 @@ function SpecGenerationButton({
 	onRunStarted: (runId: string, publicToken: string) => void;
 	onError: (message: string) => Promise<void>;
 }) {
-	const [submittingProjectId, setSubmittingProjectId] = useState<
-		string | null
-	>(null);
+	const [submittingProjectId, setSubmittingProjectId] = useState<string | null>(
+		null,
+	);
 	const isMountedRef = useRef(true);
 	const requestAbortControllerRef = useRef<AbortController | null>(null);
 	const nodes = useCanvasNodes();
@@ -898,8 +919,7 @@ function SpecGenerationButton({
 				nodes,
 				edges,
 			};
-			const { data: specData } = await apiClient.post<
-			{ runId?: unknown }>(
+			const { data: specData } = await apiClient.post<{ runId?: unknown }>(
 				"/api/ai/spec",
 				payload,
 				{ signal: abortController.signal },
@@ -910,26 +930,23 @@ function SpecGenerationButton({
 			if (!nextRunId) {
 				throw new Error("Spec run id is missing from API response.");
 			}
-			
+
 			const { data: tokenData } = await apiClient.post<{ token?: unknown }>(
 				"/api/ai/spec/token",
 				{ runId: nextRunId },
 				{ signal: abortController.signal },
-			);			const nextPublicToken =
+			);
+			const nextPublicToken =
 				typeof tokenData.token === "string" ? tokenData.token : undefined;
 
 			if (!nextPublicToken) {
 				throw new Error("Spec run public token is missing.");
 			}
 
-
 			if (abortController.signal.aborted) return;
 			onRunStarted(nextRunId, nextPublicToken);
 		} catch (error) {
-			if (
-				abortController.signal.aborted ||
-				isApiClientRequestCanceled(error)
-			) {
+			if (abortController.signal.aborted || isApiClientRequestCanceled(error)) {
 				return;
 			}
 
@@ -1073,12 +1090,13 @@ const specKeys = {
 async function fetchProjectSpecs(
 	projectId: string,
 	signal?: AbortSignal,
+	newSpec?: boolean,
 ): Promise<ProjectSpecListItem[]> {
 	let body: { specs?: unknown };
 	try {
 		const response = await apiClient.get<{ specs?: unknown }>(
 			`/api/projects/${encodeURIComponent(projectId)}/specs`,
-			{ signal },
+			{ signal, params: {newSpec} },
 		);
 		body = response.data;
 	} catch (error) {

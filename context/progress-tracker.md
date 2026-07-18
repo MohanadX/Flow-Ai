@@ -11,6 +11,10 @@ change.
 
 - Integrate generated specs into the AI sidebar Specs tab with project spec metadata listing, Markdown preview, and download actions.
 
+## Active Bug Fixes
+
+- Canvas crash on AI agent setPresence — Fixed (2026-07-18)
+
 ## Completed
 
 - Phase 1: Design System & UI Primitives — Complete
@@ -102,6 +106,7 @@ change.
   - Refactored `EditorChrome` to infer `activeProjectId` using `useParams()` instead of props
   - Passed `projectActions.openCreate` downward using a new `EditorActionContext` for `app/editor/page.tsx`
   - Replaced duplicate DB fetch calls across editor routes and prevented full layout re-renders on project navigation
+  - Fixed a workspace load bug where page-2+ projects could render without a valid `activeProject`, causing `CollaborativeCanvas` to mount outside `RoomProvider` and crash the Liveblocks editor
 
 - 09-share-dialog:
   - Created `lib/collaborator-service.ts` with list, invite, remove helpers and Clerk enrichment (display name + avatar via `clerkClient().users.getUserList`)

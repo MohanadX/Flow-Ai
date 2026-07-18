@@ -1,5 +1,5 @@
 import { metadata, queue, retry, task } from "@trigger.dev/sdk";
-import { generateText } from "ai";
+import { generateText, Output } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { Liveblocks } from "@liveblocks/node";
 import { mutateFlow } from "@liveblocks/react-flow/node";
@@ -160,6 +160,12 @@ const generatedArchitectureSchema = z
 export const designAgentTask = task({
 	id: "design-agent",
 	queue: sharedTriggerQueue,
+	retry: {
+		maxAttempts: 2, // Don't let a slow API waste run time
+		minTimeoutInMs: 2000,
+		maxTimeoutInMs: 10000,
+		factor: 2,
+	},
 	maxDuration: 300,
 	run: async (payload: DesignAgentPayload) => {
 		const { prompt, roomId } = payload;
@@ -237,9 +243,14 @@ export const designAgentTask = task({
 			apiKey: serverEnv.GOOGLE_AI_API_KEY,
 		});
 
-		const result = await generateText({
-			model: google("gemini-2.5-flash"),
-			system: `You are Flow AI, an expert software architect.
+		try {
+			const { output } = await generateText({
+				model: google("gemini-2.5-flash"),
+				maxRetries: 5,
+				output: Output.object({
+					schema: generatedArchitectureSchema,
+				}),
+				system: `You are Flow AI, an expert software architect.
 The user wants to generate or modify a system architecture diagram.
 Current Canvas State:
 Nodes: ${JSON.stringify(currentNodes, null, 2)}
@@ -256,103 +267,82 @@ Instructions:
    - orange: fill #331B00, text #FF990A
    - green: fill #0F2E18, text #62C073
 5. Apply actions like adding, moving, resizing, updating, and deleting nodes and edges to reflect the user's design.
-You MUST reply with a JSON object that matches the following schema:
-{
-  "addedNodes": [
-    {
-      "id": "string",
-      "label": "string",
-      "shape": "rectangle" | "diamond" | "circle" | "pill" | "cylinder" | "hexagon",
-      "color": "string",
-      "textColor": "string",
-      "x": "number",
-      "y": "number",
-      "width": "number",
-      "height": "number"
-    }
-  ],
-  "updatedNodes": [
-    {
-      "id": "string (the existing node id to update)",
-      "label": "string (optional)",
-      "shape": "string (optional)",
-      "color": "string (optional)",
-      "textColor": "string (optional)",
-      "x": "number (optional)",
-      "y": "number (optional)",
-      "width": "number (optional)",
-      "height": "number (optional)"
-    }
-  ],
-  "deletedNodeIds": ["string"],
-  "addedEdges": [
-    {
-      "id": "string",
-      "source": "string",
-      "target": "string",
-      "label": "string"
-    }
-  ],
-  "updatedEdges": [
-    {
-      "id": "string (the existing edge id to update)",
-      "label": "string (optional)"
-    }
-  ],
-  "deletedEdgeIds": ["string"]
-}`,
-			prompt,
-		});
+`,
+				prompt,
+			});
 
-		const generatedArchitecture = parseGeneratedArchitecture(result.text);
+			// Map and sanitize the structured object directly
+			const sanitizedArchitecture: GeneratedArchitecture = {
+				addedNodes: output.addedNodes.map(sanitizeAddedNode),
+				updatedNodes: output.updatedNodes.map(sanitizeUpdatedNode),
+				deletedNodeIds: output.deletedNodeIds,
+				addedEdges: output.addedEdges.map(sanitizeAddedEdge),
+				updatedEdges: output.updatedEdges.map(sanitizeUpdatedEdge),
+				deletedEdgeIds: output.deletedEdgeIds,
+			};
 
-		await setPresence(true, "Applying changes to canvas...", 60);
+			await setPresence(true, "Applying changes to canvas...", 60);
 
-		const appliedCounts = await applyGeneratedArchitecture(
-			liveblocks,
-			roomId,
-			generatedArchitecture,
-		);
+			const appliedCounts = await applyGeneratedArchitecture(
+				liveblocks,
+				roomId,
+				sanitizedArchitecture,
+			);
 
-		await setPresence(false, "Done", 2);
-		metadata.set("statusMessage", "Generation complete.");
+			await setPresence(false, "Done", 2);
+			metadata.set("statusMessage", "Generation complete.");
 
-		return {
-			status: "completed",
-			...appliedCounts,
-		};
+			return {
+				status: "completed",
+				...appliedCounts,
+			};
+		} catch (error) {
+			if (error instanceof Error && error.name === "AI_RetryError") {
+				console.error("Gemini is currently overloaded. Aborting task.", error);
+
+				// Tell the user on the UI that it failed due to rate limits
+				await setPresence(
+					false,
+					"Generation failed due to high demand. Please try again.",
+					10,
+				);
+			}
+
+			// Re-throw so Trigger.dev still logs the failure
+			throw error;
+		}
 	},
 });
 
-function parseGeneratedArchitecture(rawText: string): GeneratedArchitecture {
-	const match = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-	const jsonString = match?.[1] ?? rawText;
-	let parsed: unknown;
+// function parseGeneratedArchitecture(rawText: string): GeneratedArchitecture {
+// 	const match = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+// 	const jsonString = match?.[1] ?? rawText;
+// 	let parsed: unknown;
 
-	try {
-		parsed = JSON.parse(jsonString);
-	} catch (parseErr) {
-		throw new Error("Failed to parse AI architecture JSON output.", {
-			cause: parseErr,
-		});
-	}
+// 	try {
+// 		parsed = JSON.parse(jsonString);
+// 	} catch (parseErr) {
+// 		throw new Error("Failed to parse AI architecture JSON output.", {
+// 			cause: parseErr,
+// 		});
+// 	}
 
-	const result = generatedArchitectureSchema.safeParse(parsed);
-	if (!result.success) {
-		throw new Error(
-			`AI architecture output failed validation: ${result.error.message}`,
-		);
-	}
+// 	const result = generatedArchitectureSchema.safeParse(parsed);
+// 	if (!result.success) {
+// 		throw new Error(
+// 			`AI architecture output failed validation: ${result.error.message}`,
+// 		);
+// 	}
 
-	return {
-		addedNodes: result.data.addedNodes.map(sanitizeAddedNode),
-		updatedNodes: result.data.updatedNodes.map(sanitizeUpdatedNode),
-		deletedNodeIds: result.data.deletedNodeIds,
-		addedEdges: result.data.addedEdges.map(sanitizeAddedEdge),
-		updatedEdges: result.data.updatedEdges.map(sanitizeUpdatedEdge),
-		deletedEdgeIds: result.data.deletedEdgeIds,
-	};
-}
+// 	return {
+// 		addedNodes: result.data.addedNodes.map(sanitizeAddedNode),
+// 		updatedNodes: result.data.updatedNodes.map(sanitizeUpdatedNode),
+// 		deletedNodeIds: result.data.deletedNodeIds,
+// 		addedEdges: result.data.addedEdges.map(sanitizeAddedEdge),
+// 		updatedEdges: result.data.updatedEdges.map(sanitizeUpdatedEdge),
+// 		deletedEdgeIds: result.data.deletedEdgeIds,
+// 	};
+// }
 
 function sanitizeAddedNode(
 	node: z.infer<typeof addedNodeSchema>,
@@ -431,103 +421,110 @@ async function applyGeneratedArchitecture(
 		deletedEdges: 0,
 	};
 
-	await mutateFlow<CanvasNode, CanvasEdge>(
-		{ client: liveblocks, roomId },
-		(flow) => {
-			for (const node of generatedArchitecture.addedNodes) {
-				if (flow.getNode(node.id)) continue;
+	try {
+		await mutateFlow<CanvasNode, CanvasEdge>(
+			{ client: liveblocks, roomId },
+			(flow) => {
+				for (const node of generatedArchitecture.addedNodes) {
+					if (flow.getNode(node.id)) continue;
 
-				flow.addNode({
-					id: node.id,
-					type: CANVAS_NODE_TYPE,
-					position: { x: node.x, y: node.y },
-					width: node.width,
-					height: node.height,
-					data: {
-						label: node.label,
-						shape: node.shape,
-						color: node.color,
-						textColor: node.textColor,
-					},
-					style: { width: node.width, height: node.height },
-				});
-				appliedCounts.addedNodes += 1;
-			}
+					flow.addNode({
+						id: node.id,
+						type: CANVAS_NODE_TYPE,
+						position: { x: node.x, y: node.y },
+						width: node.width,
+						height: node.height,
+						data: {
+							label: node.label,
+							shape: node.shape,
+							color: node.color,
+							textColor: node.textColor,
+						},
+						style: { width: node.width, height: node.height },
+					});
+					appliedCounts.addedNodes += 1;
+				}
 
-			for (const node of generatedArchitecture.updatedNodes) {
-				const existingNode = flow.getNode(node.id);
-				if (!existingNode) continue;
+				for (const node of generatedArchitecture.updatedNodes) {
+					const existingNode = flow.getNode(node.id);
+					if (!existingNode) continue;
 
-				const nextNode: CanvasNode = {
-					...existingNode,
-					position: {
-						x: node.x ?? existingNode.position.x,
-						y: node.y ?? existingNode.position.y,
-					},
-					width: node.width ?? existingNode.width,
-					height: node.height ?? existingNode.height,
-					data: {
-						...existingNode.data,
-						...(node.label !== undefined ? { label: node.label } : {}),
-						...(node.shape !== undefined ? { shape: node.shape } : {}),
-						...(node.color !== undefined ? { color: node.color } : {}),
-						...(node.textColor !== undefined
-							? { textColor: node.textColor }
-							: {}),
-					},
-					style: {
-						...existingNode.style,
+					const nextNode: CanvasNode = {
+						...existingNode,
+						position: {
+							x: node.x ?? existingNode.position.x,
+							y: node.y ?? existingNode.position.y,
+						},
 						width: node.width ?? existingNode.width,
 						height: node.height ?? existingNode.height,
-					},
-				};
+						data: {
+							...existingNode.data,
+							...(node.label !== undefined ? { label: node.label } : {}),
+							...(node.shape !== undefined ? { shape: node.shape } : {}),
+							...(node.color !== undefined ? { color: node.color } : {}),
+							...(node.textColor !== undefined
+								? { textColor: node.textColor }
+								: {}),
+						},
+						style: {
+							...existingNode.style,
+							width: node.width ?? existingNode.width,
+							height: node.height ?? existingNode.height,
+						},
+					};
 
-				flow.updateNode(node.id, nextNode);
-				appliedCounts.updatedNodes += 1;
-			}
+					flow.updateNode(node.id, nextNode);
+					appliedCounts.updatedNodes += 1;
+				}
 
-			for (const id of generatedArchitecture.deletedNodeIds) {
-				if (!flow.getNode(id)) continue;
-				flow.removeNode(id);
-				appliedCounts.deletedNodes += 1;
-			}
+				for (const id of generatedArchitecture.deletedNodeIds) {
+					if (!flow.getNode(id)) continue;
+					flow.removeNode(id);
+					appliedCounts.deletedNodes += 1;
+				}
 
-			for (const edge of generatedArchitecture.addedEdges) {
-				if (flow.getEdge(edge.id)) continue;
+				for (const edge of generatedArchitecture.addedEdges) {
+					if (flow.getEdge(edge.id)) continue;
 
-				flow.addEdge({
-					id: edge.id,
-					type: CANVAS_EDGE_TYPE,
-					source: edge.source,
-					target: edge.target,
-					data: {
-						label: edge.label || "",
-					},
-				});
-				appliedCounts.addedEdges += 1;
-			}
+					flow.addEdge({
+						id: edge.id,
+						type: CANVAS_EDGE_TYPE,
+						source: edge.source,
+						target: edge.target,
+						data: {
+							label: edge.label || "",
+						},
+					});
+					appliedCounts.addedEdges += 1;
+				}
 
-			for (const edge of generatedArchitecture.updatedEdges) {
-				const existingEdge = flow.getEdge(edge.id);
-				if (!existingEdge || edge.label === undefined) continue;
+				for (const edge of generatedArchitecture.updatedEdges) {
+					const existingEdge = flow.getEdge(edge.id);
+					if (!existingEdge || edge.label === undefined) continue;
 
-				flow.updateEdge(edge.id, {
-					...existingEdge,
-					data: {
-						...existingEdge.data,
-						label: edge.label,
-					},
-				});
-				appliedCounts.updatedEdges += 1;
-			}
+					flow.updateEdge(edge.id, {
+						...existingEdge,
+						data: {
+							...existingEdge.data,
+							label: edge.label,
+						},
+					});
+					appliedCounts.updatedEdges += 1;
+				}
 
-			for (const id of generatedArchitecture.deletedEdgeIds) {
-				if (!flow.getEdge(id)) continue;
-				flow.removeEdge(id);
-				appliedCounts.deletedEdges += 1;
-			}
-		},
-	);
+				for (const id of generatedArchitecture.deletedEdgeIds) {
+					if (!flow.getEdge(id)) continue;
+					flow.removeEdge(id);
+					appliedCounts.deletedEdges += 1;
+				}
+			},
+		);
+	} catch (error) {
+		console.error("Failed to apply generated architecture:", error);
+		throw new Error("Failed to apply generated architecture.", {
+			cause: error,
+		});
+	}
 
 	return appliedCounts;
 }

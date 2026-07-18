@@ -78,7 +78,7 @@ export function EditorChrome({
 	userEmail,
 }: {
 	children?: ReactNode;
-} & ProjectLists & {userEmail: string}) {
+} & ProjectLists & { userEmail: string }) {
 	const params = useParams<{ projectId?: string }>();
 	const activeProjectId = params?.projectId ?? null;
 
@@ -86,7 +86,7 @@ export function EditorChrome({
 	// see newly-shared projects in real-time without a manual page reload.
 	const { data: liveSharedProjects } = useSharedProjects(sharedProjects);
 
-	usePusherSync(userEmail) // Sits in background listening for live changes
+	usePusherSync(userEmail); // Sits in background listening for live changes
 
 	const projectActions = useProjectActions({
 		ownedProjects,
@@ -96,7 +96,7 @@ export function EditorChrome({
 	const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 	const [isAiSidebarOpen, setIsAiSidebarOpen] = useState(false);
 
-	const [isAiSidebarMounted, setIsAiSidebarMounted] = useState(false)
+	const [isAiSidebarMounted, setIsAiSidebarMounted] = useState(false);
 	const [isShareOpen, setIsShareOpen] = useState(false);
 	const [isShareDialogMounted, setIsShareDialogMounted] = useState(false);
 	/** Latest AI status text from the ai-status-feed. Undefined = no active generation. */
@@ -111,14 +111,17 @@ export function EditorChrome({
 		[sharedAiStatus, onAiStatus],
 	);
 
-	const toggleSidebar = useCallback(() => setIsSidebarOpen((prev) => !prev), []);
+	const toggleSidebar = useCallback(
+		() => setIsSidebarOpen((prev) => !prev),
+		[],
+	);
 	const toggleAiSidebar = useCallback(() => {
 		setIsAiSidebarMounted(true);
 		setIsAiSidebarOpen((prev) => !prev);
 	}, []);
 	const handleShare = useCallback(() => {
-		setIsShareDialogMounted(true)
-		setIsShareOpen(true)
+		setIsShareDialogMounted(true);
+		setIsShareOpen(true);
 	}, []);
 	const closeSidebar = useCallback(() => setIsSidebarOpen(false), []);
 	const closeAiSidebar = useCallback(() => setIsAiSidebarOpen(false), []);
@@ -132,15 +135,19 @@ export function EditorChrome({
 	}, [activeProjectId, ownedProjects, sharedProjects]);
 
 	// 2. Secondary fallback: the hook's activeProject is set by openProject before navigation.
-	const foundInHook = projectActions.activeProject?.id === activeProjectId 
-		? projectActions.activeProject 
-		: null;
+	const foundInHook =
+		projectActions.activeProject?.id === activeProjectId
+			? projectActions.activeProject
+			: null;
 
 	// 3. Last fallback: dynamic fetch via React Query for direct URL loads to page-2+ projects
 	const { data: fetchedProject, isFetching } = useQuery({
 		queryKey: ["project", activeProjectId],
 		queryFn: async ({ signal }) => {
-			const res = await apiClient.get<{ project: Project }>(`/api/projects/${activeProjectId}`, { signal });
+			const res = await apiClient.get<{ project: Project }>(
+				`/api/projects/${activeProjectId}`,
+				{ signal },
+			);
 			return res.data.project;
 		},
 		enabled: !!activeProjectId && !readyProject && !foundInHook,
@@ -222,10 +229,11 @@ export function EditorChrome({
 							/>
 						)}
 						{activeProject ? (
-							<LiveblocksProvider authEndpoint="/api/liveblocks-auth" 
-							throttle={32} // ~30fps (32ms interval) instead of the default 100ms
-							backgroundKeepAliveTimeout={120000} // Disconnects after 2 minutes of idle background inactivity
-							>								
+							<LiveblocksProvider
+								authEndpoint="/api/liveblocks-auth"
+								throttle={32} // ~30fps (32ms interval) instead of the default 100ms
+								backgroundKeepAliveTimeout={120000} // Disconnects after 2 minutes of idle background inactivity
+							>
 								<RoomProvider
 									id={activeProject.id}
 									initialPresence={{ cursor: null, isThinking: false }}
