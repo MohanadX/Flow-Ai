@@ -1,7 +1,7 @@
-import { metadata, queue, retry, task } from "@trigger.dev/sdk";
-import { generateText } from "ai";
+import { metadata, queue, retry, task, idempotencyKeys, AbortTaskRunError } from "@trigger.dev/sdk";
+import { generateText, Output } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { Liveblocks } from "@liveblocks/node";
+import { Liveblocks, LiveblocksError } from "@liveblocks/node";
 import { mutateFlow } from "@liveblocks/react-flow/node";
 import { z } from "zod";
 
@@ -157,93 +157,77 @@ const generatedArchitectureSchema = z
 	})
 	.strict();
 
-export const designAgentTask = task({
-	id: "design-agent",
+async function setPresence(
+	roomId: string,
+	isThinking: boolean,
+	statusMsg: string,
+	ttl: number = 30,
+) {
+	metadata.set("statusMessage", statusMsg);
+
+	const liveblocksSecret = serverEnv.LIVEBLOCKS_SECRET_KEY;
+	try {
+		await liveblocksRequest(`${LIVEBLOCKS_API}/${roomId}/presence`, {
+			method: "POST",
+			headers: liveblocksHeaders(liveblocksSecret),
+			body: JSON.stringify({
+				userId: AGENT_ID,
+				data: { isThinking, cursor: null },
+				userInfo: {
+					displayName: "Flow AI",
+					avatarUrl: "https://api.dicebear.com/9.x/bottts/svg?seed=FlowAI",
+					cursorColor: "#6457f9",
+				},
+				ttl,
+			}),
+		});
+	} catch (err) {
+		console.error("Failed to set presence", err);
+	}
+
+	try {
+		await liveblocksRequest(`${LIVEBLOCKS_API}/${roomId}/broadcast_event`, {
+			method: "POST",
+			headers: liveblocksHeaders(liveblocksSecret),
+			body: JSON.stringify({
+				type: "ai-status-feed",
+				payload: {
+					text: isThinking ? statusMsg : undefined,
+					timestamp: new Date().toISOString(),
+				},
+			}),
+		});
+	} catch (err) {
+		console.error("Failed to broadcast ai-status-feed event", err);
+	}
+}
+
+export const generatePlanTask = task({
+	id: "generate-architecture-plan",
 	queue: sharedTriggerQueue,
-	maxDuration: 300,
-	run: async (payload: DesignAgentPayload) => {
-		const { prompt, roomId } = payload;
-		const liveblocksSecret = serverEnv.LIVEBLOCKS_SECRET_KEY;
-
-		metadata.set("statusMessage", "Starting AI Architect...");
-
-		async function setPresence(
-			isThinking: boolean,
-			statusMsg: string,
-			ttl: number = 30,
-		) {
-			metadata.set("statusMessage", statusMsg);
-
-			try {
-				await liveblocksRequest(`${LIVEBLOCKS_API}/${roomId}/presence`, {
-					method: "POST",
-					headers: liveblocksHeaders(liveblocksSecret),
-					body: JSON.stringify({
-						userId: AGENT_ID,
-						data: { isThinking, cursor: null },
-						userInfo: {
-							displayName: "Flow AI",
-							avatarUrl: "https://api.dicebear.com/9.x/bottts/svg?seed=FlowAI",
-							cursorColor: "#6457f9",
-						},
-						ttl,
-					}),
-				});
-			} catch (err) {
-				console.error("Failed to set presence", err);
-			}
-
-			try {
-				await liveblocksRequest(`${LIVEBLOCKS_API}/${roomId}/broadcast_event`, {
-					method: "POST",
-					headers: liveblocksHeaders(liveblocksSecret),
-					body: JSON.stringify({
-						type: "ai-status-feed",
-						payload: {
-							text: isThinking ? statusMsg : undefined,
-							timestamp: new Date().toISOString(),
-						},
-					}),
-				});
-			} catch (err) {
-				console.error("Failed to broadcast ai-status-feed event", err);
-			}
-		}
-
-		await setPresence(true, "Analyzing current architecture...", 60);
-
-		const liveblocks = new Liveblocks({ secret: liveblocksSecret });
-		let currentStorage: Record<string, unknown> | null = null;
-		try {
-			currentStorage = (await liveblocks.getStorageDocument(
-				roomId,
-				"json",
-			)) as Record<string, unknown>;
-		} catch (error) {
-			console.error("Could not fetch storage, might be empty", error);
-		}
-
-		const flow = currentStorage?.flow as Record<string, unknown> | undefined;
-		const currentNodes = flow?.nodes
-			? Object.values(flow.nodes as Record<string, unknown>)
-			: [];
-		const currentEdges = flow?.edges
-			? Object.values(flow.edges as Record<string, unknown>)
-			: [];
-
-		await setPresence(true, "Designing new system components...", 60);
-
+	retry: {
+		maxAttempts: 2,
+		minTimeoutInMs: 2000,
+		maxTimeoutInMs: 10000,
+		factor: 2,
+	},
+	maxDuration: 120,
+	run: async (payload: { prompt: string; currentNodes: CanvasNode[]; currentEdges: CanvasEdge[] }) => {
 		const google = createGoogleGenerativeAI({
 			apiKey: serverEnv.GOOGLE_AI_API_KEY,
 		});
 
-		const result = await generateText({
-			model: google("gemini-2.5-flash"),
-			system: `You are Flow AI, an expert software architect.
+		try {
+			const { output } = await generateText({
+				model: google("gemini-2.5-flash"),
+				output: Output.object({
+					schema: generatedArchitectureSchema,
+				}),
+				system: `You are Flow AI, an expert software architect.
 The user wants to generate or modify a system architecture diagram.
 Current Canvas State:
-Nodes: ${JSON.stringify(currentNodes, null, 2)}
-Edges: ${JSON.stringify(currentEdges, null, 2)}
+Nodes: ${JSON.stringify(payload.currentNodes, null, 2)}
+Edges: ${JSON.stringify(payload.currentEdges, null, 2)}
 
 Instructions:
 1. Interpret the user's prompt and generate the required nodes and edges modifications.
@@ -256,65 +240,126 @@ Instructions:
    - orange: fill #331B00, text #FF990A
    - green: fill #0F2E18, text #62C073
 5. Apply actions like adding, moving, resizing, updating, and deleting nodes and edges to reflect the user's design.
-You MUST reply with a JSON object that matches the following schema:
-{
-  "addedNodes": [
-    {
-      "id": "string",
-      "label": "string",
-      "shape": "rectangle" | "diamond" | "circle" | "pill" | "cylinder" | "hexagon",
-      "color": "string",
-      "textColor": "string",
-      "x": "number",
-      "y": "number",
-      "width": "number",
-      "height": "number"
-    }
-  ],
-  "updatedNodes": [
-    {
-      "id": "string (the existing node id to update)",
-      "label": "string (optional)",
-      "shape": "string (optional)",
-      "color": "string (optional)",
-      "textColor": "string (optional)",
-      "x": "number (optional)",
-      "y": "number (optional)",
-      "width": "number (optional)",
-      "height": "number (optional)"
-    }
-  ],
-  "deletedNodeIds": ["string"],
-  "addedEdges": [
-    {
-      "id": "string",
-      "source": "string",
-      "target": "string",
-      "label": "string"
-    }
-  ],
-  "updatedEdges": [
-    {
-      "id": "string (the existing edge id to update)",
-      "label": "string (optional)"
-    }
-  ],
-  "deletedEdgeIds": ["string"]
-}`,
-			prompt,
-		});
+`,
+				prompt: payload.prompt,
+			});
 
-		const generatedArchitecture = parseGeneratedArchitecture(result.text);
+			return {
+				addedNodes: output.addedNodes.map(sanitizeAddedNode),
+				updatedNodes: output.updatedNodes.map(sanitizeUpdatedNode),
+				deletedNodeIds: output.deletedNodeIds,
+				addedEdges: output.addedEdges.map(sanitizeAddedEdge),
+				updatedEdges: output.updatedEdges.map(sanitizeUpdatedEdge),
+				deletedEdgeIds: output.deletedEdgeIds,
+			};
+		} catch (error) {
+			if (error instanceof Error) {
+				const isFatal =
+					error.name === "TypeValidationError" ||
+					error.name === "JSONParseError" ||
+					error.name === "NoSuchModelError" ||
+					(error.name === "APICallError" && [400, 401, 403, 404].includes((error as unknown as { statusCode: number }).statusCode));
 
-		await setPresence(true, "Applying changes to canvas...", 60);
+				if (isFatal) {
+					throw new AbortTaskRunError(error.message);
+				}
 
-		const appliedCounts = await applyGeneratedArchitecture(
-			liveblocks,
-			roomId,
-			generatedArchitecture,
+				if (error.name === "AI_RetryError") {
+					console.error("Gemini is currently overloaded. Aborting plan task.", error);
+				}
+			}
+			throw error;
+		}
+	},
+});
+
+export const applyMutationTask = task({
+	id: "apply-architecture-mutation",
+	queue: sharedTriggerQueue,
+	retry: {
+		maxAttempts: 2,
+	},
+	maxDuration: 60,
+	run: async (payload: { roomId: string; architecture: GeneratedArchitecture }) => {
+		const liveblocksSecret = serverEnv.LIVEBLOCKS_SECRET_KEY;
+		const liveblocks = new Liveblocks({ secret: liveblocksSecret });
+		return await applyGeneratedArchitecture(liveblocks, payload.roomId, payload.architecture);
+	}
+});
+
+export const designAgentTask = task({
+	id: "design-agent",
+	queue: sharedTriggerQueue,
+	maxDuration: 300,
+	onFailure: async ({ payload }: { payload: DesignAgentPayload }) => {
+		await setPresence(
+			payload.roomId,
+			false,
+			"Generation failed after multiple attempts. Please try again.",
+			10,
 		);
+	},
+	run: async (payload: DesignAgentPayload, { ctx }) => {
+		const { prompt, roomId } = payload;
+		const liveblocksSecret = serverEnv.LIVEBLOCKS_SECRET_KEY;
 
-		await setPresence(false, "Done", 2);
+		metadata.set("statusMessage", "Starting AI Architect...");
+
+		await setPresence(roomId, true, "Analyzing current architecture...", 60);
+
+		const liveblocks = new Liveblocks({ secret: liveblocksSecret });
+		let currentStorage: Record<string, unknown> | null = null;
+		try {
+			currentStorage = (await liveblocks.getStorageDocument(
+				roomId,
+				"json",
+			)) as Record<string, unknown>;
+		} catch (error) {
+			if (error instanceof LiveblocksError && error.status === 404) {
+				console.error("Could not fetch storage, might be empty", error);
+			} else {
+				throw error;
+			}
+		}
+
+		const flow = currentStorage?.flow as Record<string, unknown> | undefined;
+		const currentNodes = flow?.nodes
+			? Object.values(flow.nodes as Record<string, unknown>)
+			: [];
+		const currentEdges = flow?.edges
+			? Object.values(flow.edges as Record<string, unknown>)
+			: [];
+
+		await setPresence(roomId, true, "Designing new system components...", 60);
+
+		let sanitizedArchitecture: GeneratedArchitecture;
+
+		try {
+			const planKey = await idempotencyKeys.create(`plan-${ctx.run.id}`);
+			sanitizedArchitecture = await generatePlanTask.triggerAndWait(
+				{ prompt, currentNodes: currentNodes as CanvasNode[], currentEdges: currentEdges as CanvasEdge[] },
+				{ idempotencyKey: planKey }
+			).unwrap();
+		} catch (error) {
+			const isRetryError =
+				error instanceof Error &&
+				(error.name === "AI_RetryError" || error.message.includes("AI_RetryError"));
+				
+			if (isRetryError) {
+				await setPresence(roomId, true, "Gemini is overloaded. Retrying...", 60);
+			}
+			throw error;
+		}
+
+		await setPresence(roomId, true, "Applying changes to canvas...", 60);
+
+		const mutationKey = await idempotencyKeys.create(`mutation-${ctx.run.id}`);
+		const appliedCounts = await applyMutationTask.triggerAndWait(
+			{ roomId, architecture: sanitizedArchitecture },
+			{ idempotencyKey: mutationKey }
+		).unwrap();
+
+		await setPresence(roomId, false, "Done", 2);
 		metadata.set("statusMessage", "Generation complete.");
 
 		return {
@@ -324,35 +369,35 @@ You MUST reply with a JSON object that matches the following schema:
 	},
 });
 
-function parseGeneratedArchitecture(rawText: string): GeneratedArchitecture {
-	const match = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-	const jsonString = match?.[1] ?? rawText;
-	let parsed: unknown;
+// function parseGeneratedArchitecture(rawText: string): GeneratedArchitecture {
+// 	const match = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+// 	const jsonString = match?.[1] ?? rawText;
+// 	let parsed: unknown;
 
-	try {
-		parsed = JSON.parse(jsonString);
-	} catch (parseErr) {
-		throw new Error("Failed to parse AI architecture JSON output.", {
-			cause: parseErr,
-		});
-	}
+// 	try {
+// 		parsed = JSON.parse(jsonString);
+// 	} catch (parseErr) {
+// 		throw new Error("Failed to parse AI architecture JSON output.", {
+// 			cause: parseErr,
+// 		});
+// 	}
 
-	const result = generatedArchitectureSchema.safeParse(parsed);
-	if (!result.success) {
-		throw new Error(
-			`AI architecture output failed validation: ${result.error.message}`,
-		);
-	}
+// 	const result = generatedArchitectureSchema.safeParse(parsed);
+// 	if (!result.success) {
+// 		throw new Error(
+// 			`AI architecture output failed validation: ${result.error.message}`,
+// 		);
+// 	}
 
-	return {
-		addedNodes: result.data.addedNodes.map(sanitizeAddedNode),
-		updatedNodes: result.data.updatedNodes.map(sanitizeUpdatedNode),
-		deletedNodeIds: result.data.deletedNodeIds,
-		addedEdges: result.data.addedEdges.map(sanitizeAddedEdge),
-		updatedEdges: result.data.updatedEdges.map(sanitizeUpdatedEdge),
-		deletedEdgeIds: result.data.deletedEdgeIds,
-	};
-}
+// 	return {
+// 		addedNodes: result.data.addedNodes.map(sanitizeAddedNode),
+// 		updatedNodes: result.data.updatedNodes.map(sanitizeUpdatedNode),
+// 		deletedNodeIds: result.data.deletedNodeIds,
+// 		addedEdges: result.data.addedEdges.map(sanitizeAddedEdge),
+// 		updatedEdges: result.data.updatedEdges.map(sanitizeUpdatedEdge),
+// 		deletedEdgeIds: result.data.deletedEdgeIds,
+// 	};
+// }
 
 function sanitizeAddedNode(
 	node: z.infer<typeof addedNodeSchema>,
@@ -431,103 +476,110 @@ async function applyGeneratedArchitecture(
 		deletedEdges: 0,
 	};
 
-	await mutateFlow<CanvasNode, CanvasEdge>(
-		{ client: liveblocks, roomId },
-		(flow) => {
-			for (const node of generatedArchitecture.addedNodes) {
-				if (flow.getNode(node.id)) continue;
+	try {
+		await mutateFlow<CanvasNode, CanvasEdge>(
+			{ client: liveblocks, roomId },
+			(flow) => {
+				for (const node of generatedArchitecture.addedNodes) {
+					if (flow.getNode(node.id)) continue;
 
-				flow.addNode({
-					id: node.id,
-					type: CANVAS_NODE_TYPE,
-					position: { x: node.x, y: node.y },
-					width: node.width,
-					height: node.height,
-					data: {
-						label: node.label,
-						shape: node.shape,
-						color: node.color,
-						textColor: node.textColor,
-					},
-					style: { width: node.width, height: node.height },
-				});
-				appliedCounts.addedNodes += 1;
-			}
+					flow.addNode({
+						id: node.id,
+						type: CANVAS_NODE_TYPE,
+						position: { x: node.x, y: node.y },
+						width: node.width,
+						height: node.height,
+						data: {
+							label: node.label,
+							shape: node.shape,
+							color: node.color,
+							textColor: node.textColor,
+						},
+						style: { width: node.width, height: node.height },
+					});
+					appliedCounts.addedNodes += 1;
+				}
 
-			for (const node of generatedArchitecture.updatedNodes) {
-				const existingNode = flow.getNode(node.id);
-				if (!existingNode) continue;
+				for (const node of generatedArchitecture.updatedNodes) {
+					const existingNode = flow.getNode(node.id);
+					if (!existingNode) continue;
 
-				const nextNode: CanvasNode = {
-					...existingNode,
-					position: {
-						x: node.x ?? existingNode.position.x,
-						y: node.y ?? existingNode.position.y,
-					},
-					width: node.width ?? existingNode.width,
-					height: node.height ?? existingNode.height,
-					data: {
-						...existingNode.data,
-						...(node.label !== undefined ? { label: node.label } : {}),
-						...(node.shape !== undefined ? { shape: node.shape } : {}),
-						...(node.color !== undefined ? { color: node.color } : {}),
-						...(node.textColor !== undefined
-							? { textColor: node.textColor }
-							: {}),
-					},
-					style: {
-						...existingNode.style,
+					const nextNode: CanvasNode = {
+						...existingNode,
+						position: {
+							x: node.x ?? existingNode.position.x,
+							y: node.y ?? existingNode.position.y,
+						},
 						width: node.width ?? existingNode.width,
 						height: node.height ?? existingNode.height,
-					},
-				};
+						data: {
+							...existingNode.data,
+							...(node.label !== undefined ? { label: node.label } : {}),
+							...(node.shape !== undefined ? { shape: node.shape } : {}),
+							...(node.color !== undefined ? { color: node.color } : {}),
+							...(node.textColor !== undefined
+								? { textColor: node.textColor }
+								: {}),
+						},
+						style: {
+							...existingNode.style,
+							width: node.width ?? existingNode.width,
+							height: node.height ?? existingNode.height,
+						},
+					};
 
-				flow.updateNode(node.id, nextNode);
-				appliedCounts.updatedNodes += 1;
-			}
+					flow.updateNode(node.id, nextNode);
+					appliedCounts.updatedNodes += 1;
+				}
 
-			for (const id of generatedArchitecture.deletedNodeIds) {
-				if (!flow.getNode(id)) continue;
-				flow.removeNode(id);
-				appliedCounts.deletedNodes += 1;
-			}
+				for (const id of generatedArchitecture.deletedNodeIds) {
+					if (!flow.getNode(id)) continue;
+					flow.removeNode(id);
+					appliedCounts.deletedNodes += 1;
+				}
 
-			for (const edge of generatedArchitecture.addedEdges) {
-				if (flow.getEdge(edge.id)) continue;
+				for (const edge of generatedArchitecture.addedEdges) {
+					if (flow.getEdge(edge.id)) continue;
 
-				flow.addEdge({
-					id: edge.id,
-					type: CANVAS_EDGE_TYPE,
-					source: edge.source,
-					target: edge.target,
-					data: {
-						label: edge.label || "",
-					},
-				});
-				appliedCounts.addedEdges += 1;
-			}
+					flow.addEdge({
+						id: edge.id,
+						type: CANVAS_EDGE_TYPE,
+						source: edge.source,
+						target: edge.target,
+						data: {
+							label: edge.label || "",
+						},
+					});
+					appliedCounts.addedEdges += 1;
+				}
 
-			for (const edge of generatedArchitecture.updatedEdges) {
-				const existingEdge = flow.getEdge(edge.id);
-				if (!existingEdge || edge.label === undefined) continue;
+				for (const edge of generatedArchitecture.updatedEdges) {
+					const existingEdge = flow.getEdge(edge.id);
+					if (!existingEdge || edge.label === undefined) continue;
 
-				flow.updateEdge(edge.id, {
-					...existingEdge,
-					data: {
-						...existingEdge.data,
-						label: edge.label,
-					},
-				});
-				appliedCounts.updatedEdges += 1;
-			}
+					flow.updateEdge(edge.id, {
+						...existingEdge,
+						data: {
+							...existingEdge.data,
+							label: edge.label,
+						},
+					});
+					appliedCounts.updatedEdges += 1;
+				}
 
-			for (const id of generatedArchitecture.deletedEdgeIds) {
-				if (!flow.getEdge(id)) continue;
-				flow.removeEdge(id);
-				appliedCounts.deletedEdges += 1;
-			}
-		},
-	);
+				for (const id of generatedArchitecture.deletedEdgeIds) {
+					if (!flow.getEdge(id)) continue;
+					flow.removeEdge(id);
+					appliedCounts.deletedEdges += 1;
+				}
+			},
+		);
+	} catch (error) {
+		console.error("Failed to apply generated architecture:", error);
+		throw new Error("Failed to apply generated architecture.", {
+			cause: error,
+		});
+	}
 
 	return appliedCounts;
 }

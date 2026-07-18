@@ -1,9 +1,11 @@
+import { getProjectDataTag } from "@/cache/projects";
 import { ApiError, handleApiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { checkProjectAccess, getCurrentIdentity } from "@/lib/project-access";
+import { revalidateTag } from "next/cache";
 
 interface SpecsRouteContext {
-	params: Promise<{ projectId: string }>;
+	params: Promise<{ projectId: string}>;
 }
 
 export async function GET(
@@ -12,6 +14,10 @@ export async function GET(
 ): Promise<Response> {
 	try {
 		const { projectId } = await params;
+		const { searchParams } = new URL(_request.url);
+        
+        const newSpec = searchParams.get('newSpec') === 'true';
+        
 		await requireAccessibleProject(projectId);
 
 		const specs = await prisma.projectSpec.findMany({
@@ -23,6 +29,9 @@ export async function GET(
 				createdAt: true,
 			},
 		});
+		if (newSpec) {
+			revalidateTag(getProjectDataTag(projectId), "max");
+		}
 
 		return Response.json({
 			specs: specs.map((spec) => ({

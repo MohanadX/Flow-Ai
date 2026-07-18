@@ -10,7 +10,6 @@ import {
 	useRef,
 	useState,
 	useTransition,
-	memo,
 } from "react";
 import {
 	Cursors,
@@ -156,25 +155,28 @@ interface BaseCanvasProps {
 	roomId: string;
 }
 
+// in react compile and hot module replacements sometime function declare turn into variable assign
+// so we make sure to define it before using it
+
 const nodeTypes = {
-    [CANVAS_NODE_TYPE]: CanvasNodeRenderer,
+	[CANVAS_NODE_TYPE]: CanvasNodeRenderer,
 } satisfies NodeTypes;
 
 const edgeTypes = {
-    [CANVAS_EDGE_TYPE]: CanvasEdgeRenderer,
+	[CANVAS_EDGE_TYPE]: CanvasEdgeRenderer,
 } satisfies EdgeTypes;
 
 const defaultEdgeOptions = {
-    type: CANVAS_EDGE_TYPE,
-    markerEnd: {
-        type: "arrowclosed" as const,
-        width: 14,
-        height: 14,
-        color: "var(--color-copy-faint)",
-    },
-    style: {
-        strokeLinecap: "round" as const,
-    },
+	type: CANVAS_EDGE_TYPE,
+	markerEnd: {
+		type: "arrowclosed" as const,
+		width: 14,
+		height: 14,
+		color: "var(--color-copy-faint)",
+	},
+	style: {
+		strokeLinecap: "round" as const,
+	},
 } satisfies DefaultEdgeOptions;
 
 function BaseCanvas({ roomId }: BaseCanvasProps) {
@@ -185,26 +187,28 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 	> | null>(null);
 	const latestCanvasCountRef = useRef({ nodes: 0, edges: 0 });
 	const nodeCounterRef = useRef(0);
-	const [dragPreview, setDragPreview] = useState<ShapeDragPreviewState  | null>(null);
+	const [dragPreview, setDragPreview] = useState<ShapeDragPreviewState | null>(
+		null,
+	);
 	const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
 	const [isTemplatesModalMounted, setIsTemplatesModalMounted] = useState(false);
 	const [isCanvasLoadChecked, setIsCanvasLoadChecked] = useState(false);
 	const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
-	const [, startTransition] = useTransition()
+	const [, startTransition] = useTransition();
 	const updateMyPresence = useUpdateMyPresence();
 	const updateMyPresenceRef = useRef(updateMyPresence);
 
 	const handleDragCleanup = useCallback(() => {
-		setDragPreview(null)
-	}, [])
+		setDragPreview(null);
+	}, []);
 	useEffect(() => {
 		updateMyPresenceRef.current = updateMyPresence;
 	}, [updateMyPresence]);
 
 	// hold the throttled function instance safely
-	const throttledUpdateMyPresenceRef = useRef<
-		ReturnType<typeof throttle<(presence: Parameters<typeof updateMyPresence>[0]) => void>> | null
-	>(null);
+	const throttledUpdateMyPresenceRef = useRef<ReturnType<
+		typeof throttle<(presence: Parameters<typeof updateMyPresence>[0]) => void>
+	> | null>(null);
 
 	// create and cleanup throttled function only once
 	useEffect(() => {
@@ -215,7 +219,10 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 		return () => throttledUpdateMyPresenceRef.current?.cancel();
 	}, []);
 
-	const closeTemplatesModal = useCallback(() => setIsTemplatesModalOpen(false), [])
+	const closeTemplatesModal = useCallback(
+		() => setIsTemplatesModalOpen(false),
+		[],
+	);
 	// Bridge ai-status-feed events out of the RoomProvider to the AiStatusContext.
 	useEventListener(({ event }) => {
 		if (event.type !== "ai-status-feed") return;
@@ -267,7 +274,7 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 					{
 						timeout: 60000, // 1 min
 						signal,
-					}
+					},
 				);
 
 				if (!isCurrentLoad) return;
@@ -277,25 +284,24 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 
 				if (snapshot && latestCount.nodes === 0 && latestCount.edges === 0) {
 					startTransition(() => {
-						
-					if (snapshot.nodes.length > 0) {
-						onNodesChange(
-							snapshot.nodes.map((node) => ({
-								type: "add" as const,
-								item: node,
-							})),
-						);
-					}
+						if (snapshot.nodes.length > 0) {
+							onNodesChange(
+								snapshot.nodes.map((node) => ({
+									type: "add" as const,
+									item: node,
+								})),
+							);
+						}
 
-					if (snapshot.edges.length > 0) {
-						onEdgesChange(
-							snapshot.edges.map((edge) => ({
-								type: "add" as const,
-								item: edge,
-							})),
-						);
-					}
-					})
+						if (snapshot.edges.length > 0) {
+							onEdgesChange(
+								snapshot.edges.map((edge) => ({
+									type: "add" as const,
+									item: edge,
+								})),
+							);
+						}
+					});
 
 					timeoutId = window.setTimeout(() => {
 						reactFlowInstanceRef.current?.fitView({ duration: 350 });
@@ -344,29 +350,32 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 			window.removeEventListener("open-starter-templates", handleOpenTemplates);
 	}, []);
 
-	const handleImportTemplate = useCallback((template: CanvasTemplate) => {
-		const reactFlowInstance = reactFlowInstanceRef.current;
-		if (!reactFlowInstance) return;
+	const handleImportTemplate = useCallback(
+		(template: CanvasTemplate) => {
+			const reactFlowInstance = reactFlowInstanceRef.current;
+			if (!reactFlowInstance) return;
 
-		const nodeChanges: NodeChange<CanvasNode>[] = [
-			...nodes.map((n) => ({ type: "remove" as const, id: n.id })),
-			...template.nodes.map((n) => ({ type: "add" as const, item: n })),
-		];
+			const nodeChanges: NodeChange<CanvasNode>[] = [
+				...nodes.map((n) => ({ type: "remove" as const, id: n.id })),
+				...template.nodes.map((n) => ({ type: "add" as const, item: n })),
+			];
 
-		const edgeChanges: EdgeChange<CanvasEdge>[] = [
-			...edges.map((e) => ({ type: "remove" as const, id: e.id })),
-			...template.edges.map((e) => ({ type: "add" as const, item: e })),
-		];
+			const edgeChanges: EdgeChange<CanvasEdge>[] = [
+				...edges.map((e) => ({ type: "remove" as const, id: e.id })),
+				...template.edges.map((e) => ({ type: "add" as const, item: e })),
+			];
 
-		startTransition(() => {
-			onNodesChange(nodeChanges);
-			onEdgesChange(edgeChanges);
-		})
+			startTransition(() => {
+				onNodesChange(nodeChanges);
+				onEdgesChange(edgeChanges);
+			});
 
-		setTimeout(() => {
-			reactFlowInstance.fitView({ duration: 500 });
-		}, 50);
-	}, [nodes, edges, onNodesChange, onEdgesChange]);
+			setTimeout(() => {
+				reactFlowInstance.fitView({ duration: 500 });
+			}, 50);
+		},
+		[nodes, edges, onNodesChange, onEdgesChange],
+	);
 
 	const undo = useUndo();
 	const redo = useRedo();
@@ -379,92 +388,109 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 		onRedo: redo,
 	});
 
-	const moveDragPreview = useCallback((
-		event: DragEvent<HTMLButtonElement | HTMLDivElement>,
-	) => {
-		if (event.clientX === 0 && event.clientY === 0) return;
-		setDragPreview(prev => prev ? {
-			...prev,
-			x: event.clientX,
-			y: event.clientY,
-		} : null);
-	}, []);
+	const moveDragPreview = useCallback(
+		(event: DragEvent<HTMLButtonElement | HTMLDivElement>) => {
+			if (event.clientX === 0 && event.clientY === 0) return;
+			setDragPreview((prev) =>
+				prev
+					? {
+							...prev,
+							x: event.clientX,
+							y: event.clientY,
+						}
+					: null,
+			);
+		},
+		[],
+	);
 
-	const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
-		if (event.dataTransfer.types.includes(SHAPE_DRAG_MIME_TYPE)) {
+	const handleDragOver = useCallback(
+		(event: DragEvent<HTMLDivElement>) => {
+			if (event.dataTransfer.types.includes(SHAPE_DRAG_MIME_TYPE)) {
+				event.preventDefault();
+				event.dataTransfer.dropEffect = "copy";
+				moveDragPreview(event);
+			}
+		},
+		[moveDragPreview],
+	);
+
+	const handleDrop = useCallback(
+		(event: DragEvent<HTMLDivElement>) => {
 			event.preventDefault();
-			event.dataTransfer.dropEffect = "copy";
-			moveDragPreview(event);
-		}
-	}, [moveDragPreview]);
+			handleDragCleanup();
 
-	const handleDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
-		event.preventDefault();
-		handleDragCleanup();
+			const payload = readShapeDragPayload(event);
+			const reactFlowInstance = reactFlowInstanceRef.current;
 
-		const payload = readShapeDragPayload(event);
-		const reactFlowInstance = reactFlowInstanceRef.current;
+			if (!payload || !reactFlowInstance) return;
 
-		if (!payload || !reactFlowInstance) return;
+			nodeCounterRef.current += 1;
 
-		nodeCounterRef.current += 1;
-
-		const position = reactFlowInstance.screenToFlowPosition({
-			x: event.clientX,
-			y: event.clientY,
-		});
-		const node: CanvasNode = {
-			id: `${payload.shape}-${Date.now()}-${nodeCounterRef.current}`,
-			type: CANVAS_NODE_TYPE,
-			position: {
-				x: position.x - payload.width / 2,
-				y: position.y - payload.height / 2,
-			},
-			width: payload.width,
-			height: payload.height,
-			style: {
-				width: payload.width,
-				height: payload.height,
-			},
-			data: {
-				label: "",
-				color: DEFAULT_NODE_COLOR,
-				textColor: DEFAULT_TEXT_COLOR,
-				shape: payload.shape,
-			},
-		};
-		const changes: NodeChange<CanvasNode>[] = [{ type: "add", item: node }];
-
-		onNodesChange(changes);
-	}, [onNodesChange, handleDragCleanup]);
-
-	const handleShapeDragStart = useCallback((
-		event: DragEvent<HTMLButtonElement>,
-		shape: NodeShape,
-	) => {
-		const payload = startShapeDrag(event, shape);
-		setDragPreview({
-			...payload,
-			x: event.clientX,
-			y: event.clientY,
-		})
-	}, []);
-
-	const handleShapeDragMove = useCallback((event: DragEvent<HTMLButtonElement>) => {
-		moveDragPreview(event);
-	}, [moveDragPreview]);
-
-	const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-		const reactFlowInstance = reactFlowInstanceRef.current;
-		if (!reactFlowInstance) return;
-
-		throttledUpdateMyPresenceRef.current?.({
-			cursor: reactFlowInstance.screenToFlowPosition({
+			const position = reactFlowInstance.screenToFlowPosition({
 				x: event.clientX,
 				y: event.clientY,
-			}),
-		});
-	}, []);
+			});
+			const node: CanvasNode = {
+				id: `${payload.shape}-${Date.now()}-${nodeCounterRef.current}`,
+				type: CANVAS_NODE_TYPE,
+				position: {
+					x: position.x - payload.width / 2,
+					y: position.y - payload.height / 2,
+				},
+				width: payload.width,
+				height: payload.height,
+				style: {
+					width: payload.width,
+					height: payload.height,
+				},
+				data: {
+					label: "",
+					color: DEFAULT_NODE_COLOR,
+					textColor: DEFAULT_TEXT_COLOR,
+					shape: payload.shape,
+				},
+			};
+			const changes: NodeChange<CanvasNode>[] = [{ type: "add", item: node }];
+
+			onNodesChange(changes);
+		},
+		[onNodesChange, handleDragCleanup],
+	);
+
+	const handleShapeDragStart = useCallback(
+		(event: DragEvent<HTMLButtonElement>, shape: NodeShape) => {
+			const payload = startShapeDrag(event, shape);
+			setDragPreview({
+				...payload,
+				x: event.clientX,
+				y: event.clientY,
+			});
+		},
+		[],
+	);
+
+	const handleShapeDragMove = useCallback(
+		(event: DragEvent<HTMLButtonElement>) => {
+			moveDragPreview(event);
+		},
+		[moveDragPreview],
+	);
+
+	const handlePointerMove = useCallback(
+		(event: React.PointerEvent<HTMLDivElement>) => {
+			const reactFlowInstance = reactFlowInstanceRef.current;
+			if (!reactFlowInstance) return;
+
+			throttledUpdateMyPresenceRef.current?.({
+				cursor: reactFlowInstance.screenToFlowPosition({
+					x: event.clientX,
+					y: event.clientY,
+				}),
+			});
+		},
+		[],
+	);
 
 	const handlePointerLeave = useCallback(() => {
 		throttledUpdateMyPresenceRef.current?.cancel();
@@ -526,6 +552,163 @@ function BaseCanvas({ roomId }: BaseCanvasProps) {
 				/>
 			)}
 		</div>
+	);
+}
+
+function CanvasNodeRenderer({ id, data, selected }: NodeProps<CanvasNode>) {
+	const reactFlow = useReactFlow<CanvasNode, CanvasEdge>();
+	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+	const [isEditing, setIsEditing] = useState(false);
+
+	// Defensive guards: AI-generated updates can occasionally contain
+	// unexpected or missing fields. Normalize here to avoid runtime crashes
+	// in the renderer (e.g. accessing SHAPE_MIN_SIZES[undefined]).
+	const safeShape = isNodeShape(data?.shape) ? data.shape : "rectangle";
+	const minSize = SHAPE_MIN_SIZES[safeShape as NodeShape];
+	const safeLabel = typeof data?.label === "string" ? data.label : "";
+	const safeColor =
+		typeof data?.color === "string" ? data.color : DEFAULT_NODE_COLOR;
+	const safeTextColor =
+		typeof data?.textColor === "string" ? data.textColor : DEFAULT_TEXT_COLOR;
+	const displayLabel =
+		safeLabel.trim().length > 0
+			? safeLabel
+			: EMPTY_NODE_LABEL_PLACEHOLDER;
+
+	useEffect(() => {
+		if (!isEditing || !textareaRef.current) return;
+
+		const frameId = window.requestAnimationFrame(() => {
+			const textarea = textareaRef.current;
+
+			if (!textarea) return;
+
+			textarea.focus();
+			textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+		});
+
+		return () => window.cancelAnimationFrame(frameId);
+	}, [isEditing]);
+
+	useEffect(() => {
+		if (!isEditing || !textareaRef.current) return;
+
+		resizeLabelEditor(textareaRef.current);
+	}, [isEditing, safeLabel]);
+
+	const handleLabelChange = useCallback(
+		(nextLabel: string) => {
+			reactFlow.updateNodeData(id, { label: nextLabel });
+		},
+		[id, reactFlow],
+	);
+
+	const handleLabelKeyDown = useCallback(
+		(event: KeyboardEvent<HTMLTextAreaElement>) => {
+			event.stopPropagation();
+
+			if (event.key !== "Escape") return;
+
+			event.preventDefault();
+			setIsEditing(false);
+			event.currentTarget.blur();
+		},
+		[],
+	);
+
+	return (
+		<ShapeSurface
+			shape={safeShape}
+			fill={safeColor}
+			selected={selected}
+			className="group h-full min-h-12 w-full min-w-24"
+			style={{ color: safeTextColor }}
+		>
+			<NodeToolbar
+				isVisible={selected}
+				position={Position.Top}
+				offset={12}
+				className="nodrag nopan flex items-center gap-1.5 rounded-full border border-surface-border bg-surface/95 p-1.5 shadow-xl backdrop-blur"
+			>
+				{NODE_COLORS.map((palette) => {
+					const isSelectedColor = safeColor === palette.fill;
+					return (
+						<button
+							key={palette.name}
+							type="button"
+							className={cn(
+								"nodrag nopan flex size-4 cursor-pointer items-center justify-center rounded-full border transition-all",
+								isSelectedColor
+									? "scale-110 border-brand shadow-[0_0_0_2px_var(--color-surface),0_0_0_3px_var(--color-brand)]"
+									: "border-surface-border-subtle hover:scale-110 hover:shadow-[0_0_8px_var(--swatch-glow)]",
+							)}
+							style={
+								{
+									backgroundColor: palette.fill,
+									"--swatch-glow": palette.text,
+								} as React.CSSProperties
+							}
+							onPointerDown={(event) => {
+								event.stopPropagation();
+								reactFlow.updateNodeData(id, {
+									color: palette.fill,
+									textColor: palette.text,
+								});
+							}}
+							title={palette.name}
+						/>
+					);
+				})}
+			</NodeToolbar>
+			<NodeResizer
+				isVisible={selected}
+				minWidth={minSize?.width ?? SHAPE_MIN_SIZES.rectangle.width}
+				minHeight={minSize?.height ?? SHAPE_MIN_SIZES.rectangle.height}
+				keepAspectRatio={safeShape === "circle"}
+				handleClassName={NODE_RESIZER_HANDLE_CLASSNAME}
+				lineClassName={NODE_RESIZER_LINE_CLASSNAME}
+			/>
+			<CanvasNodeHandles />
+			<div className="absolute inset-3 z-10 flex items-center justify-center">
+				{isEditing ? (
+					<textarea
+						ref={textareaRef}
+						value={safeLabel}
+						rows={1}
+						spellCheck={false}
+						className="nodrag nopan w-full max-w-full resize-none overflow-hidden border-0 bg-transparent px-2 py-1 text-center text-sm font-medium outline-none placeholder:text-copy-faint"
+						style={{ color: "inherit" }}
+						placeholder={EMPTY_NODE_LABEL_PLACEHOLDER}
+						onBlur={() => setIsEditing(false)}
+						onChange={(event) => {
+							resizeLabelEditor(event.currentTarget);
+							handleLabelChange(event.target.value);
+						}}
+						onKeyDown={handleLabelKeyDown}
+						onPointerDown={(event) => event.stopPropagation()}
+					/>
+				) : (
+					<button
+						type="button"
+						className="nodrag nopan flex max-h-full w-full cursor-text items-center justify-center overflow-hidden bg-transparent px-2 py-1 text-center text-sm font-medium outline-none"
+						style={{ color: "inherit" }}
+						onDoubleClick={(event) => {
+							event.stopPropagation();
+							setIsEditing(true);
+						}}
+					>
+						<span
+							className={cn(
+								"max-h-full whitespace-pre-wrap wrap-break-word",
+								safeLabel.trim().length === 0 && "text-copy-faint",
+							)}
+						>
+							{displayLabel}
+						</span>
+					</button>
+				)}
+			</div>
+		</ShapeSurface>
 	);
 }
 
@@ -710,145 +893,6 @@ function ShapePanel({
 				</Button>
 			))}
 		</div>
-	);
-}
-
-function CanvasNodeRenderer({ id, data, selected }: NodeProps<CanvasNode>) {
-	const reactFlow = useReactFlow<CanvasNode, CanvasEdge>();
-	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-	const [isEditing, setIsEditing] = useState(false);
-	const minSize = SHAPE_MIN_SIZES[data.shape];
-	const displayLabel =
-		data.label.trim().length > 0 ? data.label : EMPTY_NODE_LABEL_PLACEHOLDER;
-
-	useEffect(() => {
-		if (!isEditing || !textareaRef.current) return;
-
-		const frameId = window.requestAnimationFrame(() => {
-			const textarea = textareaRef.current;
-
-			if (!textarea) return;
-
-			textarea.focus();
-			textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-		});
-
-		return () => window.cancelAnimationFrame(frameId);
-	}, [isEditing]);
-
-	useEffect(() => {
-		if (!isEditing || !textareaRef.current) return;
-
-		resizeLabelEditor(textareaRef.current);
-	}, [data.label, isEditing]);
-
-	const handleLabelChange = useCallback((nextLabel: string) => {
-		reactFlow.updateNodeData(id, { label: nextLabel });
-	}, [id, reactFlow]);
-
-	const handleLabelKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
-		event.stopPropagation();
-
-		if (event.key !== "Escape") return;
-
-		event.preventDefault();
-		setIsEditing(false);
-		event.currentTarget.blur();
-	}, []);
-
-	return (
-		<ShapeSurface
-			shape={data.shape}
-			fill={data.color}
-			selected={selected}
-			className="group h-full min-h-12 w-full min-w-24"
-			style={{ color: data.textColor || DEFAULT_TEXT_COLOR }}
-		>
-			<NodeToolbar
-				isVisible={selected}
-				position={Position.Top}
-				offset={12}
-				className="nodrag nopan flex items-center gap-1.5 rounded-full border border-surface-border bg-surface/95 p-1.5 shadow-xl backdrop-blur"
-			>
-				{NODE_COLORS.map((palette) => {
-					const isSelectedColor = data.color === palette.fill;
-					return (
-						<button
-							key={palette.name}
-							type="button"
-							className={cn(
-								"nodrag nopan flex size-4 cursor-pointer items-center justify-center rounded-full border transition-all",
-								isSelectedColor
-									? "scale-110 border-brand shadow-[0_0_0_2px_var(--color-surface),0_0_0_3px_var(--color-brand)]"
-									: "border-surface-border-subtle hover:scale-110 hover:shadow-[0_0_8px_var(--swatch-glow)]",
-							)}
-							style={
-								{
-									backgroundColor: palette.fill,
-									"--swatch-glow": palette.text,
-								} as React.CSSProperties
-							}
-							onPointerDown={(event) => {
-								event.stopPropagation();
-								reactFlow.updateNodeData(id, {
-									color: palette.fill,
-									textColor: palette.text,
-								});
-							}}
-							title={palette.name}
-						/>
-					);
-				})}
-			</NodeToolbar>
-			<NodeResizer
-				isVisible={selected}
-				minWidth={minSize.width}
-				minHeight={minSize.height}
-				keepAspectRatio={data.shape === "circle"}
-				handleClassName={NODE_RESIZER_HANDLE_CLASSNAME}
-				lineClassName={NODE_RESIZER_LINE_CLASSNAME}
-			/>
-			<CanvasNodeHandles />
-			<div className="absolute inset-3 z-10 flex items-center justify-center">
-				{isEditing ? (
-					<textarea
-						ref={textareaRef}
-						value={data.label}
-						rows={1}
-						spellCheck={false}
-						className="nodrag nopan w-full max-w-full resize-none overflow-hidden border-0 bg-transparent px-2 py-1 text-center text-sm font-medium outline-none placeholder:text-copy-faint"
-						style={{ color: "inherit" }}
-						placeholder={EMPTY_NODE_LABEL_PLACEHOLDER}
-						onBlur={() => setIsEditing(false)}
-						onChange={(event) => {
-							resizeLabelEditor(event.currentTarget);
-							handleLabelChange(event.target.value);
-						}}
-						onKeyDown={handleLabelKeyDown}
-						onPointerDown={(event) => event.stopPropagation()}
-					/>
-				) : (
-					<button
-						type="button"
-						className="nodrag nopan flex max-h-full w-full cursor-text items-center justify-center overflow-hidden bg-transparent px-2 py-1 text-center text-sm font-medium outline-none"
-						style={{ color: "inherit" }}
-						onDoubleClick={(event) => {
-							event.stopPropagation();
-							setIsEditing(true);
-						}}
-					>
-						<span
-							className={cn(
-								"max-h-full whitespace-pre-wrap wrap-break-word",
-								data.label.trim().length === 0 && "text-copy-faint",
-							)}
-						>
-							{displayLabel}
-						</span>
-					</button>
-				)}
-			</div>
-		</ShapeSurface>
 	);
 }
 
@@ -1053,10 +1097,23 @@ function CanvasNodeHandles() {
 	);
 }
 
-const CanvasCursor = memo(function CanvasCursor({ connectionId }: CursorsCursorProps) {
-	// subscribe only to the exact primitive values we need so that cursor coordinates updates don't trigger updates
-	const displayName = useOther(connectionId, (other) => other.info?.displayName);
-	const cursorColor = useOther(connectionId, (other) => other.info?.cursorColor || "#000");
+// NOTE: CanvasCursor must be a plain function component — NOT wrapped in memo().
+// @liveblocks/react-flow's useStableComponent() calls the cursor component as a
+// plain function: `Component2(props)`. A memo()-wrapped component is a React object,
+// not a callable function, so calling it that way throws:
+//   TypeError: Component2 is not a function
+// Stability/memoization is already handled internally by useStableComponent's ref pattern.
+function CanvasCursor({ connectionId }: CursorsCursorProps) {
+	// Subscribe only to the exact primitive values we need so that cursor
+	// coordinate updates on other users don't cause unnecessary re-renders here.
+	const displayName = useOther(
+		connectionId,
+		(other) => other.info?.displayName,
+	);
+	const cursorColor = useOther(
+		connectionId,
+		(other) => other.info?.cursorColor || "#000",
+	);
 	const isThinking = useOther(
 		connectionId,
 		(other) => other.presence.isThinking,
@@ -1088,10 +1145,7 @@ const CanvasCursor = memo(function CanvasCursor({ connectionId }: CursorsCursorP
 			</div>
 		</div>
 	);
-}, (prevProps, nextProps) => {
-	// Only re-render if connectionId changes
-	return prevProps.connectionId === nextProps.connectionId;
-});
+}
 
 function ShapeDragPreview({
 	preview,
