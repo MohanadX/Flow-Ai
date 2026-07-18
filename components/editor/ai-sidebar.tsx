@@ -225,9 +225,11 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 					},
 				);
 				setSendError(undefined);
+				return true
 			} catch (error) {
 				console.error("Failed to push ai-chat message", error);
 				setSendError("Chat feed write failed.");
+				return false
 			}
 		},
 		[createFeedMessage],
@@ -262,7 +264,7 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 				timestamp,
 			};
 
-			await pushChatMessage(userPayload);
+			if (!(await pushChatMessage(userPayload))) return;
 			if (abortController.signal.aborted) return;
 
 			const { data: designData } = await apiClient.post<{
