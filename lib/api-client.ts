@@ -1,6 +1,6 @@
 import axios, { isAxiosError, isCancel } from "axios";
 
-export const API_REQUEST_TIMEOUT_MS = 1000 * 60 * 60; // 1 hour
+export const API_REQUEST_TIMEOUT_MS = 10000; // 10 seconds
 
 export const apiClient = axios.create({
 	timeout: API_REQUEST_TIMEOUT_MS,
