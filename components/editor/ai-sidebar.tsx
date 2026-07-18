@@ -125,7 +125,7 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 			const result = await fetchProjectSpecs(projectId, signal, newSpec.current)
 			// here end revalidation logic from client to server then to client
 			newSpec.current = false;
-			return result
+			return result;
 		},
 		enabled: isOpen,
 	});
