@@ -48,9 +48,13 @@ export function PresenceAvatars() {
 											alt={info.displayName || "Collaborator"}
 											fill
 											className="object-cover"
-											unoptimized={/\.svg(?:$|\?|#)/i.test(info.avatarUrl || '') || info.avatarUrl?.includes('type=svg')}
+											unoptimized={
+												info.avatarUrl?.endsWith('.svg') ||
+												info.avatarUrl?.includes('type=svg') ||
+												info.avatarUrl?.includes('/svg')
+											}
 											// next Image optimization doesn't work with svg since they are already optimized
-											
+
 										/>
 									) : (
 										<span className="text-xs font-medium text-copy-primary">
