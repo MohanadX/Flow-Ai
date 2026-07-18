@@ -565,9 +565,14 @@ function CanvasNodeRenderer({ id, data, selected }: NodeProps<CanvasNode>) {
 	// in the renderer (e.g. accessing SHAPE_MIN_SIZES[undefined]).
 	const safeShape = isNodeShape(data?.shape) ? data.shape : "rectangle";
 	const minSize = SHAPE_MIN_SIZES[safeShape as NodeShape];
+	const safeLabel = typeof data?.label === "string" ? data.label : "";
+	const safeColor =
+		typeof data?.color === "string" ? data.color : DEFAULT_NODE_COLOR;
+	const safeTextColor =
+		typeof data?.textColor === "string" ? data.textColor : DEFAULT_TEXT_COLOR;
 	const displayLabel =
-		typeof data?.label === "string" && data.label.trim().length > 0
-			? data.label
+		safeLabel.trim().length > 0
+			? safeLabel
 			: EMPTY_NODE_LABEL_PLACEHOLDER;
 
 	useEffect(() => {
@@ -589,7 +594,7 @@ function CanvasNodeRenderer({ id, data, selected }: NodeProps<CanvasNode>) {
 		if (!isEditing || !textareaRef.current) return;
 
 		resizeLabelEditor(textareaRef.current);
-	}, [data.label, isEditing]);
+	}, [isEditing, safeLabel]);
 
 	const handleLabelChange = useCallback(
 		(nextLabel: string) => {
@@ -614,10 +619,10 @@ function CanvasNodeRenderer({ id, data, selected }: NodeProps<CanvasNode>) {
 	return (
 		<ShapeSurface
 			shape={safeShape}
-			fill={data?.color ?? DEFAULT_NODE_COLOR}
+			fill={safeColor}
 			selected={selected}
 			className="group h-full min-h-12 w-full min-w-24"
-			style={{ color: data?.textColor || DEFAULT_TEXT_COLOR }}
+			style={{ color: safeTextColor }}
 		>
 			<NodeToolbar
 				isVisible={selected}
@@ -626,7 +631,7 @@ function CanvasNodeRenderer({ id, data, selected }: NodeProps<CanvasNode>) {
 				className="nodrag nopan flex items-center gap-1.5 rounded-full border border-surface-border bg-surface/95 p-1.5 shadow-xl backdrop-blur"
 			>
 				{NODE_COLORS.map((palette) => {
-					const isSelectedColor = data.color === palette.fill;
+					const isSelectedColor = safeColor === palette.fill;
 					return (
 						<button
 							key={palette.name}
@@ -668,7 +673,7 @@ function CanvasNodeRenderer({ id, data, selected }: NodeProps<CanvasNode>) {
 				{isEditing ? (
 					<textarea
 						ref={textareaRef}
-						value={data.label}
+						value={safeLabel}
 						rows={1}
 						spellCheck={false}
 						className="nodrag nopan w-full max-w-full resize-none overflow-hidden border-0 bg-transparent px-2 py-1 text-center text-sm font-medium outline-none placeholder:text-copy-faint"
@@ -695,7 +700,7 @@ function CanvasNodeRenderer({ id, data, selected }: NodeProps<CanvasNode>) {
 						<span
 							className={cn(
 								"max-h-full whitespace-pre-wrap wrap-break-word",
-								data.label.trim().length === 0 && "text-copy-faint",
+								safeLabel.trim().length === 0 && "text-copy-faint",
 							)}
 						>
 							{displayLabel}
