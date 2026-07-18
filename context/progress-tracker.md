@@ -14,6 +14,7 @@ change.
 ## Active Bug Fixes
 
 - Canvas crash on AI agent setPresence — Fixed (2026-07-18)
+- Trigger.dev AI agent retry error handling and idempotency — Fixed (2026-07-18)
 
 ## Completed
 
@@ -678,6 +679,12 @@ change.
   - Bound the throttled update to `handlePointerMove` on the canvas and shape panel to prevent network congestion during high-frequency mouse movements.
   - Ensured immediate `cursor: null` dispatch bypassing the throttle on `handlePointerLeave`
   - Added a "trailing edge" to the throttle that saves and executes the very last event once the cooldown timer ends. This prevents interactive UI elements (like draggable elements or sliders) from freezing short of their final positions while still maintaining smooth, optimized performance during active movement.
+- AI Agent Retry Error and Idempotency Fixes:
+  - Extracted `setPresence` in `trigger/design-agent.ts` to cleanly invoke from `onFailure`.
+  - Configured `onFailure` with explicit parameter type to preserve standard Trigger.dev `TaskFailureHookParams` error hook shape, emitting a final failure message only after all retries are exhausted.
+  - Replaced the permanent failure branch inside `catch (error)` with an intermediate "Gemini is overloaded. Retrying..." state before rethrowing the error so Trigger.dev retries correctly.
+  - Refactored `designAgentTask` as an orchestrator and separated `generatePlanTask` (LLM payload generation) from `applyMutationTask` (Liveblocks JSON Patch mutation).
+  - Used Trigger.dev `idempotencyKeys` based on `ctx.run.id` for both subtasks, guaranteeing that task retries bypass already-completed AI generations or canvas mutations.
 
 ## In Progress
 

@@ -121,19 +121,21 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 	const newSpec = useRef<boolean>(false);
 	const specsQuery = useQuery({
 		queryKey: specKeys.list(projectId),
-		queryFn: ({ signal }) =>
-			fetchProjectSpecs(projectId, signal, newSpec.current),
-
+		queryFn: async ({ signal }) => {
+			const result = await fetchProjectSpecs(projectId, signal, newSpec.current)
+			// here end revalidation logic from client to server then to client
+			newSpec.current = true;
+			return result
+		},
 		enabled: isOpen,
 	});
 
-	if(specsQuery.isError) {
-		console.error(specsQuery.error)
-	}
-
 	useEffect(() => {
-		newSpec.current = false; // here end revalidation logic from client to server then to client
-	}, [specsQuery.data?.length]);
+		if(specsQuery.isError) {
+			console.error(specsQuery.error)
+		}
+	}, [specsQuery.isError, specsQuery.error])
+
 	const selectedSpecDownloadUrl = selectedSpec
 		? getSpecDownloadUrl(projectId, selectedSpec.id)
 		: undefined;
@@ -153,9 +155,11 @@ export function AiSidebar({ isOpen, onClose, projectId }: AiSidebarProps) {
 		staleTime: 0,
 	});
 
-	if (specPreviewQuery.isError) {
-		console.error(specPreviewQuery.error)
-	}
+	useEffect(() => {
+		if (specPreviewQuery.isError) {
+			console.error(specPreviewQuery.error)
+		}
+	}, [specPreviewQuery.isError, specPreviewQuery.error])
 
 	useEffect(() => {
 		isMountedRef.current = true;

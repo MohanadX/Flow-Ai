@@ -1,4 +1,4 @@
-import { metadata, queue, retry, task } from "@trigger.dev/sdk";
+import { metadata, queue, retry, task, idempotencyKeys } from "@trigger.dev/sdk";
 import { generateText, Output } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { Liveblocks } from "@liveblocks/node";
@@ -157,6 +157,125 @@ const generatedArchitectureSchema = z
 	})
 	.strict();
 
+async function setPresence(
+	roomId: string,
+	isThinking: boolean,
+	statusMsg: string,
+	ttl: number = 30,
+) {
+	metadata.set("statusMessage", statusMsg);
+
+	const liveblocksSecret = serverEnv.LIVEBLOCKS_SECRET_KEY;
+	try {
+		await liveblocksRequest(`${LIVEBLOCKS_API}/${roomId}/presence`, {
+			method: "POST",
+			headers: liveblocksHeaders(liveblocksSecret),
+			body: JSON.stringify({
+				userId: AGENT_ID,
+				data: { isThinking, cursor: null },
+				userInfo: {
+					displayName: "Flow AI",
+					avatarUrl: "https://api.dicebear.com/9.x/bottts/svg?seed=FlowAI",
+					cursorColor: "#6457f9",
+				},
+				ttl,
+			}),
+		});
+	} catch (err) {
+		console.error("Failed to set presence", err);
+	}
+
+	try {
+		await liveblocksRequest(`${LIVEBLOCKS_API}/${roomId}/broadcast_event`, {
+			method: "POST",
+			headers: liveblocksHeaders(liveblocksSecret),
+			body: JSON.stringify({
+				type: "ai-status-feed",
+				payload: {
+					text: isThinking ? statusMsg : undefined,
+					timestamp: new Date().toISOString(),
+				},
+			}),
+		});
+	} catch (err) {
+		console.error("Failed to broadcast ai-status-feed event", err);
+	}
+}
+
+export const generatePlanTask = task({
+	id: "generate-architecture-plan",
+	queue: sharedTriggerQueue,
+	retry: {
+		maxAttempts: 2,
+		minTimeoutInMs: 2000,
+		maxTimeoutInMs: 10000,
+		factor: 2,
+	},
+	maxDuration: 120,
+	run: async (payload: { prompt: string; currentNodes: CanvasNode[]; currentEdges: CanvasEdge[] }) => {
+		const google = createGoogleGenerativeAI({
+			apiKey: serverEnv.GOOGLE_AI_API_KEY,
+		});
+
+		try {
+			const { output } = await generateText({
+				model: google("gemini-2.5-flash"),
+				maxRetries: 5,
+				output: Output.object({
+					schema: generatedArchitectureSchema,
+				}),
+				system: `You are Flow AI, an expert software architect.
+The user wants to generate or modify a system architecture diagram.
+Current Canvas State:
+Nodes: ${JSON.stringify(payload.currentNodes, null, 2)}
+Edges: ${JSON.stringify(payload.currentEdges, null, 2)}
+
+Instructions:
+1. Interpret the user's prompt and generate the required nodes and edges modifications.
+2. Provide new nodes with suitable shapes (e.g., 'cylinder' for databases, 'rectangle' for services, 'hexagon' for external).
+3. Ensure new coordinates (x, y) are spaced out properly so nodes don't overlap. Usually space them by 200-300px.
+4. Use matching dark-theme color pairs for color/textColor. Example pairs:
+   - neutral: fill #1F1F1F, text #EDEDED
+   - blue: fill #10233D, text #52A8FF
+   - purple: fill #2E1938, text #BF7AF0
+   - orange: fill #331B00, text #FF990A
+   - green: fill #0F2E18, text #62C073
+5. Apply actions like adding, moving, resizing, updating, and deleting nodes and edges to reflect the user's design.
+`,
+				prompt: payload.prompt,
+			});
+
+			return {
+				addedNodes: output.addedNodes.map(sanitizeAddedNode),
+				updatedNodes: output.updatedNodes.map(sanitizeUpdatedNode),
+				deletedNodeIds: output.deletedNodeIds,
+				addedEdges: output.addedEdges.map(sanitizeAddedEdge),
+				updatedEdges: output.updatedEdges.map(sanitizeUpdatedEdge),
+				deletedEdgeIds: output.deletedEdgeIds,
+			};
+		} catch (error) {
+			if (error instanceof Error && error.name === "AI_RetryError") {
+				console.error("Gemini is currently overloaded. Aborting plan task.", error);
+			}
+			throw error;
+		}
+	},
+});
+
+export const applyMutationTask = task({
+	id: "apply-architecture-mutation",
+	queue: sharedTriggerQueue,
+	retry: {
+		maxAttempts: 2,
+	},
+	maxDuration: 60,
+	run: async (payload: { roomId: string; architecture: GeneratedArchitecture }) => {
+		const liveblocksSecret = serverEnv.LIVEBLOCKS_SECRET_KEY;
+		const liveblocks = new Liveblocks({ secret: liveblocksSecret });
+		return await applyGeneratedArchitecture(liveblocks, payload.roomId, payload.architecture);
+	}
+});
+
 export const designAgentTask = task({
 	id: "design-agent",
 	queue: sharedTriggerQueue,
@@ -167,56 +286,21 @@ export const designAgentTask = task({
 		factor: 2,
 	},
 	maxDuration: 300,
-	run: async (payload: DesignAgentPayload) => {
+	onFailure: async ({ payload }: { payload: DesignAgentPayload }) => {
+		await setPresence(
+			payload.roomId,
+			false,
+			"Generation failed after multiple attempts. Please try again.",
+			10,
+		);
+	},
+	run: async (payload: DesignAgentPayload, { ctx }) => {
 		const { prompt, roomId } = payload;
 		const liveblocksSecret = serverEnv.LIVEBLOCKS_SECRET_KEY;
 
 		metadata.set("statusMessage", "Starting AI Architect...");
 
-		async function setPresence(
-			isThinking: boolean,
-			statusMsg: string,
-			ttl: number = 30,
-		) {
-			metadata.set("statusMessage", statusMsg);
-
-			try {
-				await liveblocksRequest(`${LIVEBLOCKS_API}/${roomId}/presence`, {
-					method: "POST",
-					headers: liveblocksHeaders(liveblocksSecret),
-					body: JSON.stringify({
-						userId: AGENT_ID,
-						data: { isThinking, cursor: null },
-						userInfo: {
-							displayName: "Flow AI",
-							avatarUrl: "https://api.dicebear.com/9.x/bottts/svg?seed=FlowAI",
-							cursorColor: "#6457f9",
-						},
-						ttl,
-					}),
-				});
-			} catch (err) {
-				console.error("Failed to set presence", err);
-			}
-
-			try {
-				await liveblocksRequest(`${LIVEBLOCKS_API}/${roomId}/broadcast_event`, {
-					method: "POST",
-					headers: liveblocksHeaders(liveblocksSecret),
-					body: JSON.stringify({
-						type: "ai-status-feed",
-						payload: {
-							text: isThinking ? statusMsg : undefined,
-							timestamp: new Date().toISOString(),
-						},
-					}),
-				});
-			} catch (err) {
-				console.error("Failed to broadcast ai-status-feed event", err);
-			}
-		}
-
-		await setPresence(true, "Analyzing current architecture...", 60);
+		await setPresence(roomId, true, "Analyzing current architecture...", 60);
 
 		const liveblocks = new Liveblocks({ secret: liveblocksSecret });
 		let currentStorage: Record<string, unknown> | null = null;
@@ -237,80 +321,42 @@ export const designAgentTask = task({
 			? Object.values(flow.edges as Record<string, unknown>)
 			: [];
 
-		await setPresence(true, "Designing new system components...", 60);
+		await setPresence(roomId, true, "Designing new system components...", 60);
 
-		const google = createGoogleGenerativeAI({
-			apiKey: serverEnv.GOOGLE_AI_API_KEY,
-		});
+		let sanitizedArchitecture: GeneratedArchitecture;
 
 		try {
-			const { output } = await generateText({
-				model: google("gemini-2.5-flash"),
-				maxRetries: 5,
-				output: Output.object({
-					schema: generatedArchitectureSchema,
-				}),
-				system: `You are Flow AI, an expert software architect.
-The user wants to generate or modify a system architecture diagram.
-Current Canvas State:
-Nodes: ${JSON.stringify(currentNodes, null, 2)}
-Edges: ${JSON.stringify(currentEdges, null, 2)}
-
-Instructions:
-1. Interpret the user's prompt and generate the required nodes and edges modifications.
-2. Provide new nodes with suitable shapes (e.g., 'cylinder' for databases, 'rectangle' for services, 'hexagon' for external).
-3. Ensure new coordinates (x, y) are spaced out properly so nodes don't overlap. Usually space them by 200-300px.
-4. Use matching dark-theme color pairs for color/textColor. Example pairs:
-   - neutral: fill #1F1F1F, text #EDEDED
-   - blue: fill #10233D, text #52A8FF
-   - purple: fill #2E1938, text #BF7AF0
-   - orange: fill #331B00, text #FF990A
-   - green: fill #0F2E18, text #62C073
-5. Apply actions like adding, moving, resizing, updating, and deleting nodes and edges to reflect the user's design.
-`,
-				prompt,
-			});
-
-			// Map and sanitize the structured object directly
-			const sanitizedArchitecture: GeneratedArchitecture = {
-				addedNodes: output.addedNodes.map(sanitizeAddedNode),
-				updatedNodes: output.updatedNodes.map(sanitizeUpdatedNode),
-				deletedNodeIds: output.deletedNodeIds,
-				addedEdges: output.addedEdges.map(sanitizeAddedEdge),
-				updatedEdges: output.updatedEdges.map(sanitizeUpdatedEdge),
-				deletedEdgeIds: output.deletedEdgeIds,
-			};
-
-			await setPresence(true, "Applying changes to canvas...", 60);
-
-			const appliedCounts = await applyGeneratedArchitecture(
-				liveblocks,
-				roomId,
-				sanitizedArchitecture,
-			);
-
-			await setPresence(false, "Done", 2);
-			metadata.set("statusMessage", "Generation complete.");
-
-			return {
-				status: "completed",
-				...appliedCounts,
-			};
+			const planKey = await idempotencyKeys.create(`plan-${ctx.run.id}`);
+			sanitizedArchitecture = await generatePlanTask.triggerAndWait(
+				{ prompt, currentNodes: currentNodes as CanvasNode[], currentEdges: currentEdges as CanvasEdge[] },
+				{ idempotencyKey: planKey }
+			).unwrap();
 		} catch (error) {
-			if (error instanceof Error && error.name === "AI_RetryError") {
-				console.error("Gemini is currently overloaded. Aborting task.", error);
-
-				// Tell the user on the UI that it failed due to rate limits
-				await setPresence(
-					false,
-					"Generation failed due to high demand. Please try again.",
-					10,
-				);
+			const isRetryError =
+				error instanceof Error &&
+				(error.name === "AI_RetryError" || error.message.includes("AI_RetryError"));
+				
+			if (isRetryError) {
+				await setPresence(roomId, true, "Gemini is overloaded. Retrying...", 60);
 			}
-
-			// Re-throw so Trigger.dev still logs the failure
 			throw error;
 		}
+
+		await setPresence(roomId, true, "Applying changes to canvas...", 60);
+
+		const mutationKey = await idempotencyKeys.create(`mutation-${ctx.run.id}`);
+		const appliedCounts = await applyMutationTask.triggerAndWait(
+			{ roomId, architecture: sanitizedArchitecture },
+			{ idempotencyKey: mutationKey }
+		).unwrap();
+
+		await setPresence(roomId, false, "Done", 2);
+		metadata.set("statusMessage", "Generation complete.");
+
+		return {
+			status: "completed",
+			...appliedCounts,
+		};
 	},
 });
 
